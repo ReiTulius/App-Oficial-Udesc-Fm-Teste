@@ -13,8 +13,8 @@ import datetime as dt # Importação necessária para o fuso horário
 st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
 # 🔐 CONTA DO ROBÔ (Quem envia)
-EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
-SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
+EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
+SENHA_ROBO_REMETENTE = "nvfxdrlzpkzbugao"
 
 # 📥 SEU E-MAIL (Quem recebe o relatório de quem cadastrou o lote)
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
