@@ -12,11 +12,11 @@ from datetime import datetime
 st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
 # 🔐 CONTA DO ROBÔ (Quem envia)
-# Coloque aqui o e-mail da rádio ou o seu que gerou a "Senha de App" de 16 dígitos no Google
+# Configure aqui o e-mail central e a senha de app de 16 dígitos do Google
 EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
 SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
 
-# 📥 SEU E-MAIL (Quem recebe o alerta de quem cadastrou)
+# 📥 SEU E-MAIL (Quem recebe o relatório de quem cadastrou o lote)
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
 
 # 📊 LINKS DE EXPORTAÇÃO DIRETOS DO GOOGLE SHEETS
@@ -30,7 +30,7 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 📧 FUNÇÃO DE NOTIFICAÇÃO (MOSTRA QUEM E O QUE FOI CADASTRADO)
+# 📧 FUNÇÃO DE NOTIFICAÇÃO POR E-MAIL
 # ==========================================
 def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
     if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
@@ -41,7 +41,7 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         msg['From'] = f"Painel Udesc FM <{EMAIL_ROBO_REMETENTE}>"
         msg['To'] = EMAIL_DESTINATARIO_OFICIAL
         
-        # O assunto já te mostra direto na caixa de entrada quem fez o procedimento
+        # O assunto já exibe direto na sua caixa de entrada quem realizou o cadastro
         msg['Subject'] = f"📻 Novo Cadastro por: {nome_usuario} ({nome_acervo})"
         
         linhas_musicas = []
@@ -152,7 +152,7 @@ def processar_linha_musica(linha_bruta):
         return None
         
     linha_limpa_fim = linha_original.lower()
-    if Chat_clean := linha_limpa_fim.endswith(".mp3"):
+    if linha_limpa_fim.endswith(".mp3"):
         linha_limpa_fim = linha_limpa_fim[:-4].strip()
         
     eh_sc = False
@@ -183,7 +183,7 @@ def processar_linha_musica(linha_bruta):
     if busca_comp:
         compositores_com_parentese = busca_comp.group(0)
         compositores = re.sub(r'\((comp\.|compa)\s*', '', compositores_com_parentese, flags=re.IGNORECASE).rstrip(')')
-        linha_trabalho = Jazz_clean := linha_trabalho.replace(compositores_com_parentese, "").replace("  ", " ")
+        linha_trabalho = linha_trabalho.replace(compositores_com_parentese, "").replace("  ", " ")
 
     partes = [p.strip() for p in linha_trabalho.split(" - ")]
     if len(partes) < 2:
@@ -226,11 +226,11 @@ def processar_linha_musica(linha_bruta):
     }
 
 
-# --- INTERFACE DE NAVEGAÇÃO ORIGINAL ---
+# --- INTERFACE DE NAVEGAÇÃO ---
 st.sidebar.title("Painel de Controle")
 opcao = st.sidebar.radio(
     "Navegar para:",
-    ["🔍 Buscar no Acervo", "📂 Cadastrar Novas Músicas", "💿 Formatador de Linhas", "📸 Gerador de Setlist (Instagram)"]
+    ["🔍 Buscar no Acervo", "📂 Ver Todo o Acervo", "💿 Formatador de Acervo", "📸 Gerador de Setlist (Instagram)"]
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Udesc FM 🎧")
@@ -260,9 +260,9 @@ if opcao == "🔍 Buscar no Acervo":
             st.error("Nenhuma música encontrada.")
 
 # ==========================================
-# 📂 ABA: CADASTRAR NOVAS MÚSICAS
+# 📂 ABA: VER TODO O ACERVO
 # ==========================================
-elif opcao == "📂 Cadastrar Novas Músicas":
+elif opcao == "📂 Ver Todo o Acervo":
     st.title("📋 Visualização Geral do Acervo")
     filtro_banco = st.selectbox("Selecione qual acervo deseja analisar:", ["Todos os Acervos Juntos", "Apenas Túlio", "Apenas Jéssica", "Apenas Som da Ilha"])
     
@@ -279,9 +279,9 @@ elif opcao == "📂 Cadastrar Novas Músicas":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE LINHAS
+# 💿 ABA: FORMATADOR DE ACERVO
 # ==========================================
-elif opcao == "💿 Formatador de Linhas":
+elif opcao == "💿 Formatador de Acervo":
     st.title("Automatizador de Acervo Para Udesc FM")
     st.markdown("Insira a lista de músicas para limpar, formatar e separar.")
 
@@ -393,7 +393,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
-                        partes = linha.split(" - ", 1)
+                        partes = linea_split = linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
