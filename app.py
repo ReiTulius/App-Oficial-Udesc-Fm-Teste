@@ -1,97 +1,55 @@
 import streamlit as st
 import pandas as pd
-import requests
-import base64
-import json
 import re
 from datetime import datetime
-from io import StringIO
 
 # Configuração da página do aplicativo
 st.set_page_config(page_title="Painel Udesc FM - Mídias", page_icon="📻", layout="wide")
 
 # ==========================================
-# 📊 LINKS DAS PLANILHAS GOOGLE
+# 📊 LINKS DIRETOS PARA EXPORTAÇÃO (ABAS CORRETAS)
 # ==========================================
-URL_CARGA_SOM_DA_ILHA = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/edit?usp=drive_link"
-URL_CARGA_TULIO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/edit?usp=drive_link"
-URL_CARGA_JESSICA = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/edit?usp=drive_link"
-
-URL_INSTAGRAM_SHEETS = URL_CARGA_SOM_DA_ILHA
-
-# ==========================================
-# ⚙️ CONFIGURAÇÕES DE CONEXÃO (GITHUB SECRETS)
-# ==========================================
-try:
-    GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-    REPOSITORIO = st.secrets["REPOSITORIO"]
-except Exception:
-    st.error("🔑 Erro: Você precisa configurar o 'GITHUB_TOKEN' e o 'REPOSITORIO' nos Secrets do Streamlit!")
-    st.stop()
-
-ARQUIVO_BANCO = "acervo_udesc.csv"
-URL_API_GITHUB = f"https://api.github.com/repos/{REPOSITORIO}/contents/{ARQUIVO_BANCO}"
+# Mudamos o final para gid=0 para garantir que pegue a aba principal de cada uma
+URL_SOM_DA_ILHA = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv&gid=0"
+URL_TULIO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/export?format=csv&gid=0"
+URL_JESSICA = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv&gid=0"
 
 # ==========================================
-# 💾 REGRAS DE LEITURA E ESCRITA
+# 🔄 CARREGAMENTO EM TEMPO REAL (SEM DEPENDER DO GITHUB PARA LER)
 # ==========================================
-def converter_link_google(url):
-    if "docs.google.com/spreadsheets" in url:
-        try:
-            id_planilha = url.split("/d/")[1].split("/")[0]
-            return f"https://docs.google.com/spreadsheets/d/{id_planilha}/export?format=csv"
-        except Exception:
-            return url
-    return url
-
-def salvar_banco_no_github(df, mensagem_commit, sha=None):
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    conteudo_csv = df.to_csv(index=False)
-    conteudo_base64 = base64.b64encode(conteudo_csv.encode("utf-8")).decode("utf-8")
+@st.cache_data(ttl=30)  # Atualiza a cada 30 segundos se houver mudanças nas planilhas
+def carregar_tudo_do_google():
+    dfs = []
+    # Planilha 1: Som da Ilha
+    try:
+        df1 = pd.read_csv(URL_SOM_DA_ILHA)
+        if not df1.empty: dfs.append(df1)
+    except: pass
     
-    dados_envio = {
-        "message": mensagem_commit,
-        "content": conteudo_base64
-    }
-    if sha:
-        dados_envio["sha"] = sha
-        
-    res = requests.put(URL_API_GITHUB, headers=headers, data=json.dumps(dados_envio))
-    if res.status_code in [200, 201]:
-        st.cache_data.clear()
-        return True
-    return False
-
-@st.cache_data(ttl=60)
-def carregar_banco_oficial_github():
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    response = requests.get(URL_API_GITHUB, headers=headers)
+    # Planilha 2: Túlio
+    try:
+        df2 = pd.read_csv(URL_TULIO)
+        if not df2.empty: dfs.append(df2)
+    except: pass
     
-    if response.status_code == 200:
-        dados_json = response.json()
-        conteudo_base64 = dados_json["content"]
-        conteudo_csv = base64.b64decode(conteudo_base64).decode("utf-8")
-        df = pd.read_csv(StringIO(conteudo_csv))
-        return df, dados_json["sha"]
-    else:
-        try:
-            lista_dfs = []
-            for url in [URL_CARGA_SOM_DA_ILHA, URL_CARGA_TULIO, URL_CARGA_JESSICA]:
-                url_csv = converter_link_google(url)
-                df_temp = pd.read_csv(url_csv)
-                lista_dfs.append(df_temp)
-            df_consolidado = pd.concat(lista_dfs, ignore_index=True)
-            return df_consolidado, None
-        except Exception:
-            return pd.DataFrame(), None
+    # Planilha 3: Jéssica
+    try:
+        df3 = pd.read_csv(URL_JESSICA)
+        if not df3.empty: dfs.append(df3)
+    except: pass
+
+    if dfs:
+        df_total = pd.concat(dfs, ignore_index=True)
+        # Remove linhas totalmente em branco
+        df_total.dropna(how='all', inplace=True)
+        return df_total
+    return pd.DataFrame()
 
 @st.cache_data(ttl=300)
-def carregar_banco_instagram(url):
+def carregar_banco_instagram():
     try:
-        url_direta = converter_link_google(url)
-        df = pd.read_csv(url_direta)
+        df = pd.read_csv(URL_SOM_DA_ILHA)
         df.columns = [str(c).strip().lower() for c in df.columns]
-        
         col_artista = df.columns[0]
         col_insta = df.columns[1]
         for c in df.columns:
@@ -105,12 +63,12 @@ def carregar_banco_instagram(url):
             if insta.lower() in ["nan", "null", "none", "0", ""]: insta = ""
             elif not insta.startswith("@"): insta = "@" + insta
             banco[nome_art] = insta
-        return banco, None
-    except Exception as e:
-        return {}, str(e)
+        return banco
+    except:
+        return {}
 
 # ==========================================
-# 💿 LÓGICA DO FORMATADOR DE ARQUIVOS (RESTAURADA ORIGINAL)
+# 💿 LÓGICA ORIGINAL DO FORMATADOR (IDENTICA À VERSÃO INICIAL)
 # ==========================================
 def processar_linha_musica(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
@@ -156,94 +114,54 @@ def processar_linha_musica(linha_bruta):
         "Andan.": "", "Data Cadastro": datetime.now().strftime("%d/%m/%Y"), "Participações": participacao, "Nome do Arquivo": nome_final
     }
 
-# --- MENU LATERAL DE NAVEGAÇÃO ---
+# --- MENU LATERAL ---
 st.sidebar.title("📻 Painel de Controle")
 opcao = st.sidebar.radio(
     "Navegar para:",
-    ["🔍 Buscar no Acervo", "📝 Cadastrar Novas Músicas", "💿 Formatador de Linhas", "📸 Gerador de Setlist (Instagram)"]
+    ["🔍 Buscar no Acervo", "📋 Ver Todo o Acervo", "💿 Formatador de Linhas", "📸 Gerador de Setlist (Instagram)"]
 )
 
 # --- ABA 1: BUSCA NO ACERVO ---
 if opcao == "🔍 Buscar no Acervo":
-    st.title("🔍 Acervo Oficial Integrado - Udesc FM")
-    df_acervo, _ = carregar_banco_oficial_github()
+    st.title("🔍 Busca Instantânea no Acervo")
+    df_acervo = carregar_tudo_do_google()
     
-    if df_acervo is not None and not df_acervo.empty:
-        termo = st.text_input("Digite o artista, nome da música ou nome do arquivo para pesquisar:")
+    if not df_acervo.empty:
+        st.write(f"📊 **Total de músicas integradas em tempo real:** {len(df_acervo)}")
+        termo = st.text_input("Digite o artista, nome da música ou arquivo:")
+        
         if termo:
-            termo = termo.lower()
-            
-            # Varre de forma tolerante todas as colunas textuais da planilha por termos parciais
+            termo_lower = termo.lower()
+            # Varre todas as colunas existentes atrás do termo digitado
             mascara = pd.Series(False, index=df_acervo.index)
             for col in df_acervo.columns:
-                mascara |= df_acervo[col].astype(str).str.lower().str.contains(termo, na=False)
-                
+                mascara |= df_acervo[col].astype(str).str.lower().str.contains(termo_lower, na=False)
+            
             resultados = df_acervo[mascara]
             if not resultados.empty:
-                st.success(f"🎉 Encontradas {len(resultados)} correspondências no acervo!")
+                st.success(f"🎉 Encontradas {len(resultados)} correspondências!")
                 st.dataframe(resultados, use_container_width=True)
-            else: 
-                st.error("Nenhuma música encontrada com este termo.")
-        else:
-            st.info(f"💡 Banco sincronizado com sucesso. Há {len(df_acervo)} entradas prontas para busca.")
-    else:
-        st.warning("⚠️ Não foi possível indexar as planilhas. Certifique-se de que o arquivo acervo_udesc.csv existe no repositório.")
-
-# --- ABA 2: CADASTRO MANUAL ---
-elif opcao == "📝 Cadastrar Novas Músicas":
-    st.title("📝 Incluir Nova Música no Acervo Oficial")
-    df_acervo, sha_atual = carregar_banco_oficial_github()
-    
-    # Pastas do Sysrad mapeadas diretamente do seu acervo real
-    pastas_sysrad = [
-        "", "Black Music Internacional", "Black Music Nacional", "Blues 2025", 
-        "Hip Hop e Rap Nacional", "Internacional Espanhol", "Internacional Outras Línguas", 
-        "Internacional Intérpretes Brasileiros", "MPB 2020", "MPB Sortidas", 
-        "Música Portuguesa", "Pop Brasileiro", "Pop Internacional_2025", 
-        "Pop-Rock Brasileiro", "Pop-rock Internacional", "Reggae Brasil_2025", 
-        "Reggae Internacional", "Rock Brasileiro", "Rock Internacional", 
-        "Jazz 2020", "Bolsista Tulio", "Natal 2024", "Ilha Pop Rock"
-    ]
-    
-    with st.form("form_cadastro", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            artista = st.text_input("Nome do Artista:")
-            musica = st.text_input("Nome da Música:")
-            participacao = st.text_input("Participações (opcional):")
-            compositores = st.text_input("Compositores (opcional):")
-            origem = st.selectbox("Origem (Pasta no Sysrad):", pastas_sysrad)
-        with col2:
-            ano = st.text_input("Ano de Lançamento (opcional):")
-            formato = st.text_input("Formato/Álbum (opcional):")
-            idioma = st.text_input("Idioma (ex: Inglês, Português):")
-            classificacao = st.slider("Classificação (Nota da Música):", min_value=0, max_value=10, value=5, step=1)
-            sc_check = st.checkbox("Música pertencente à Santa Catarina (SC)?")
-            
-        if st.form_submit_button("Salvar Música no Acervo 💾", type="primary"):
-            if not artista or not musica: st.error("⚠️ Artista e Música são obrigatórios!")
             else:
-                p_str = f" - (part. {participacao})" if participacao else ""
-                c_str = f" (comp. {compositores})" if compositores else ""
-                f_str = f" - {formato}" if formato else ""
-                a_str = f" - {ano}" if ano else ""
-                s_str = " - SC" if sc_check else ""
-                nome_arq = re.sub(r'\s+', ' ', f"{artista}{p_str} - {musica}{c_str}{f_str}{a_str}{s_str}").strip()
-                
-                nova_linha = {
-                    "Música": musica, "Artista": artista, "Compositores": compositores, "Formato": formato, "Ano": ano,
-                    "Origem": origem, "Gênero": "", "Gênero Relacionado": "", "Idioma": idioma, "Classifi.": str(classificacao),
-                    "Andan.": "", "Data Cadastro": datetime.now().strftime("%d/%m/%Y"), "Participações": participacao, "Nome do Arquivo": nome_arq
-                }
-                df_novo = pd.concat([df_acervo, pd.DataFrame([nova_linha])], ignore_index=True)
-                if salvar_banco_no_github(df_novo, f"Adicionado {artista} - {musica}", sha_atual):
-                    st.success("🎉 Gravada com sucesso no Acervo Oficial!")
+                st.error("Nenhuma música encontrada com esse termo. Verifique a grafia.")
+    else:
+        st.warning("⚠️ Nenhuma informação foi retornada das planilhas do Google. Verifique as permissões de compartilhamento.")
 
-# --- ABA 3: FORMATADOR EM LOTE (ESTRUTURA ORIGINAL RECUPERADA) ---
+# --- ABA 2: VER TODO O ACERVO (NOVO PEDIDO!) ---
+elif opcao == "📋 Ver Todo o Acervo":
+    st.title("📋 Todas as Músicas Cadastradas")
+    df_acervo = carregar_tudo_do_google()
+    
+    if not df_acervo.empty:
+        st.write(f"Exibindo a lista completa contendo as **{len(df_acervo)}** linhas unificadas das planilhas:")
+        # Exibe a tabela completa estruturada
+        st.dataframe(df_acervo, use_container_width=True)
+    else:
+        st.warning("Não há dados para exibir.")
+
+# --- ABA 3: FORMATADOR EM LOTE (VERSÃO QUE DEU CERTO) ---
 elif opcao == "💿 Formatador de Linhas":
-    st.title("💿 Automatizador de Linhas do Acervo")
-    df_acervo, sha_atual = carregar_banco_oficial_github()
-    texto_bruto = st.text_area("Cole aqui as linhas brutas:", height=200)
+    st.title("💿 Formatador de Linhas (Original)")
+    texto_bruto = st.text_area("Cole aqui as suas linhas brutas do Sysrad:", height=250)
     
     if st.button("Processar Linhas 🚀", type="primary"):
         if texto_bruto:
@@ -254,38 +172,29 @@ elif opcao == "💿 Formatador de Linhas":
                 if res: lista_novas.append(res)
             if lista_novas:
                 df_novas = pd.DataFrame(lista_novas)
-                st.success(f"Identificadas {len(df_novas)} linhas!")
+                st.success(f"Identificadas {len(df_novas)} linhas com sucesso!")
                 st.dataframe(df_novas, use_container_width=True)
-                st.session_state["df_lote_temporario"] = df_novas
-            else: st.warning("Nenhuma linha válida encontrada.")
+            else:
+                st.warning("Nenhuma linha válida pôde ser convertida.")
 
-    if "df_lote_temporario" in st.session_state:
-        if st.button("📥 CONFIRMAR: Gravar Todas no Acervo definitivo?"):
-            df_novas = st.session_state["df_lote_temporario"]
-            df_final = pd.concat([df_acervo, df_novas], ignore_index=True)
-            if salvar_banco_no_github(df_final, "Lote adicionado", sha_atual):
-                st.success("Gravado com sucesso!")
-                del st.session_state["df_lote_temporario"]
-
-# --- ABA 4: INSTAGRAM (ESTRUTURA ORIGINAL RECUPERADA) ---
+# --- ABA 4: INSTAGRAM (VERSÃO QUE DEU CERTO) ---
 elif opcao == "📸 Gerador de Setlist (Instagram)":
-    st.title("📸 Formatador de Roteiro")
-    banco_instagram, erro = carregar_banco_instagram(URL_INSTAGRAM_SHEETS)
-    if erro: st.error(f"Erro ao ler banco de Instagram: {erro}")
-    else:
-        texto_sysrad = st.text_area("Cole aqui o roteiro do Sysrad:", height=200)
-        if st.button("Formatar Roteiro ✨", type="primary"):
-            if texto_sysrad:
-                linhas = texto_sysrad.split('\n')
-                resultado = [datetime.now().strftime("%d/%m/%Y"), ""]
-                for linha in linhas:
-                    linha = linha.strip()
-                    if not linha or any(x in linha for x in ["Marcador", "Total:", "DescriçãoDuração"]): continue
-                    linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
-                    if " - " in linha:
-                        partes = linha.split(" - ", 1)
-                        art_orig = partes[0].strip()
-                        mus_limpa = re.split(r'(\(comp|\(compa|Álbum|EP|Single|\d{4}|\d{2}:\d{2})', partes[1], flags=re.IGNORECASE)[0].strip().rstrip('-').strip()
-                        insta = banco_instagram.get(art_orig.lower(), "")
-                        resultado.append(f"{art_orig} - {mus_limpa} {insta}".strip())
-                st.text_area("Pronto para as Redes Sociais:", value="\n".join(resultado), height=300)
+    st.title("📸 Gerador de Setlist - Redes Sociais")
+    banco_instagram = carregar_banco_instagram()
+    texto_sysrad = st.text_area("Cole aqui o roteiro bruto extraído do Sysrad:", height=250)
+    
+    if st.button("Formatar Roteiro ✨", type="primary"):
+        if texto_sysrad:
+            linhas = texto_sysrad.split('\n')
+            resultado = [datetime.now().strftime("%d/%m/%Y"), ""]
+            for linha in linhas:
+                linha = linha.strip()
+                if not linha or any(x in linha for x in ["Marcador", "Total:", "DescriçãoDuração"]): continue
+                linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
+                if " - " in linha:
+                    partes = linha.split(" - ", 1)
+                    art_orig = partes[0].strip()
+                    mus_limpa = re.split(r'(\(comp|\(compa|Álbum|EP|Single|\d{4}|\d{2}:\d{2})', partes[1], flags=re.IGNORECASE)[0].strip().rstrip('-').strip()
+                    insta = banco_instagram.get(art_orig.lower(), "")
+                    resultado.append(f"{art_orig} - {mus_limpa} {insta}".strip())
+            st.text_area("Pronto para copiar e colar no Instagram:", value="\n".join(resultado), height=300)
