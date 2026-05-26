@@ -5,6 +5,7 @@ import base64
 import json
 import re
 from datetime import datetime
+from io import StringIO
 
 # Configuração da página do aplicativo
 st.set_page_config(page_title="Painel Udesc FM - Tulio", page_icon="📻", layout="wide")
@@ -22,56 +23,24 @@ except Exception:
 ARQUIVO_BANCO = "acervo_udesc.csv"
 URL_API_GITHUB = f"https://api.github.com/repos/{REPOSITORIO}/contents/{ARQUIVO_BANCO}"
 
-# Link do Google Sheets antigo (apenas para puxar a carga inicial das 9 mil linhas caso o arquivo do GitHub ainda não exista)
-URL_CARGA_INICIAL_GOOGLE = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
+# Links do Google Sheets antigo para puxar a carga inicial das 9 mil linhas
+URL_CARGA_TULIO = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
+# Substitua abaixo pelo link real da planilha Som da Ilha quando tiver em mãos:
+URL_CARGA_SOM_DA_ILHA = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
+
 URL_INSTAGRAM_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
-
-# --- MENU LATERAL DE NAVEGAÇÃO ---
-st.sidebar.title("📻 Painel de Controle")
-st.sidebar.markdown("Escolha a ferramenta que deseja usar agora:")
-opcao = st.sidebar.radio(
-    "Navegar para:",
-    ["🔍 Buscar no Acervo", "📝 Cadastrar Novas Músicas", "💿 Formatador de Linhas", "📸 Gerador de Setlist (Instagram)"]
-)
-st.sidebar.markdown("---")
-st.sidebar.caption("Desenvolvido para otimizar a programação da Udesc FM 🎧")
-
 
 # ==========================================
 # 💾 REGRAS DE LEITURA E ESCRITA NO GITHUB
 # ==========================================
 def converter_link_google(url):
     if "docs.google.com/spreadsheets" in url:
-        id_planilha = url.split("/d/")[1].split("/")[0]
-        return f"https://docs.google.com/spreadsheets/d/{id_planilha}/export?format=csv"
-    return url
-
-@st.cache_data(ttl=60)
-def carregar_banco_oficial_github():
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    response = requests.get(URL_API_GITHUB, headers=headers)
-    
-    if response.status_code == 200:
-        dados_json = response.json()
-        conteudo_base64 = dados_json["content"]
-        conteudo_csv = base64.b64decode(conteudo_base64).decode("utf-8")
-        from io import StringIO
-        df = pd.read_csv(StringIO(conteudo_csv))
-        return df, dados_json["sha"]
-    
-    elif response.status_code == 404:
-        # Se o arquivo não existe no GitHub, faz a carga inicial a partir do Google Sheets antigo (As 9 mil linhas)
         try:
-            st.info("📥 Criando banco de dados oficial no GitHub com base no histórico das planilhas antigas...")
-            url_csv = converter_link_google(URL_CARGA_INICIAL_GOOGLE)
-            df_inicial = pd.read_csv(url_csv)
-            salvar_banco_no_github(df_inicial, "Carga inicial do acervo histórico")
-            return df_inicial, None
-        except Exception as e:
-            return pd.DataFrame(), None
-    else:
-        st.error(f"Erro ao conectar ao GitHub: {response.status_code}")
-        return pd.DataFrame(), None
+            id_planilha = url.split("/d/")[1].split("/")[0]
+            return f"https://docs.google.com/spreadsheets/d/{id_planilha}/export?format=csv"
+        except Exception:
+            return url
+    return url
 
 def salvar_banco_no_github(df, mensagem_commit, sha=None):
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
@@ -93,6 +62,54 @@ def salvar_banco_no_github(df, mensagem_commit, sha=None):
         st.error(f"Falha ao salvar dados no GitHub: {res.text}")
         return False
 
+@st.cache_data(ttl=60)
+def carregar_banco_oficial_github():
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    response = requests.get(URL_API_GITHUB, headers=headers)
+    
+    if response.status_code == 200:
+        dados_json = response.json()
+        conteudo_base64 = dados_json["content"]
+        conteudo_csv = base64.b64decode(conteudo_base64).decode("utf-8")
+        df = pd.read_csv(StringIO(conteudo_csv))
+        return df, dados_json["sha"]
+    
+    elif response.status_code == 404:
+        # Se o arquivo não existe no GitHub, faz a migração automática juntando as duas planilhas
+        try:
+            st.info("📥 Sincronizando o histórico das planilhas Tulio e Som da Ilha pela primeira vez...")
+            
+            # Puxa dados da planilha do Tulio
+            url_csv_tulio = converter_link_google(URL_CARGA_TULIO)
+            df_tulio = pd.read_csv(url_csv_tulio)
+            
+            # Puxa dados da planilha Som da Ilha
+            url_csv_ilha = converter_link_google(URL_CARGA_SOM_DA_ILHA)
+            df_ilha = pd.read_csv(url_csv_ilha)
+            
+            # Junta as duas tabelas em um único blocão de dados
+            df_consolidado = pd.concat([df_tulio, df_ilha], ignore_index=True)
+            
+            # Padroniza nomes de colunas limpando espaços
+            df_consolidado.columns = [str(c).strip() for c in df_consolidado.columns]
+            
+            # Remove linhas duplicadas se houver alguma música repetida
+            for col_nome in ["Nome do Arquivo", "Nome do arquivo"]:
+                if col_nome in df_consolidado.columns:
+                    df_consolidado.drop_duplicates(subset=[col_nome], keep="first", inplace=True)
+                    break
+                
+            # Salva o resultado final direto no seu GitHub
+            salvar_banco_no_github(df_consolidado, "Migração inicial do acervo unificado")
+            st.success("🎉 Histórico importado com sucesso! Agora o site é o acervo oficial.")
+            return df_consolidado, None
+        except Exception as e:
+            st.error(f"Erro na migração inicial: {e}")
+            return pd.DataFrame(), None
+    else:
+        st.error(f"Erro ao conectar ao GitHub: {response.status_code}")
+        return pd.DataFrame(), None
+
 @st.cache_data(ttl=300)
 def carregar_banco_instagram(url):
     try:
@@ -110,7 +127,6 @@ def carregar_banco_instagram(url):
         return banco, None
     except Exception as e:
         return {}, str(e)
-
 
 # ==========================================
 # 💿 LÓGICA DO FORMATADOR DE ARQUIVOS
@@ -154,11 +170,20 @@ def processar_linha_musica(linha_bruta):
     nome_final = re.sub(r'\s+', ' ', f"{artista}{p_str} - {musica}{c_str}{f_str}{a_str}{s_str}").strip()
 
     return {
-        "Música": musica, "Artista": artist_name := artista, "Compositores": compositores, "Formato": formato, "Ano": ano,
+        "Música": musica, "Artista": artista, "Compositores": compositores, "Formato": formato, "Ano": ano,
         "Origem": "", "Gênero": "", "Gênero Relacionado": "", "Est/Idioma": "SC" if eh_sc else "", "Classificação": "",
         "Andamento": "", "Data Cadastro": datetime.now().strftime("%d/%m/%Y"), "Participações": participacao, "Nome do Arquivo": nome_final, "eh_sc": eh_sc
     }
 
+# --- MENU LATERAL DE NAVEGAÇÃO ---
+st.sidebar.title("📻 Painel de Controle")
+st.sidebar.markdown("Escolha a ferramenta que deseja usar agora:")
+opcao = st.sidebar.radio(
+    "Navegar para:",
+    ["🔍 Buscar no Acervo", "📝 Cadastrar Novas Músicas", "💿 Formatador de Linhas", "📸 Gerador de Setlist (Instagram)"]
+)
+st.sidebar.markdown("---")
+st.sidebar.caption("Desenvolvido para otimizar a programação da Udesc FM 🎧")
 
 # ==========================================
 # 🖥️ CORPO E EXECUÇÃO DAS ABAS DO SITE
@@ -217,7 +242,6 @@ elif opcao == "📝 Cadastrar Novas Músicas":
             if not artista or not musica:
                 st.error("⚠️ Os campos 'Artista' e 'Música' são obrigatórios!")
             else:
-                # Gera o nome do arquivo padronizado automaticamente
                 p_str = f" - (part. {participacao})" if participacao else ""
                 c_str = f" (comp. {compositores})" if compositores else ""
                 f_str = f" - {formato}" if formato else ""
@@ -251,7 +275,7 @@ elif opcao == "💿 Formatador de Linhas":
             for l in linhas:
                 res = processar_linha_musica(l)
                 if res:
-                    res.pop("eh_sc") # Remove controle interno
+                    res.pop("eh_sc")
                     lista_novas.append(res)
             
             if lista_novas:
@@ -259,14 +283,27 @@ elif opcao == "💿 Formatador de Linhas":
                 st.success(f"Foram identificadas {len(df_novas)} linhas válidas!")
                 st.dataframe(df_novas, use_container_width=True)
                 
-                if st.button("Gravar Todas essas músicas no Acervo definitivo? 📥"):
-                    df_final = pd.concat([df_acervo, df_novas], ignore_index=True)
-                    df_final.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
-                    if salvar_banco_no_github(df_final, f"Adicionadas {len(df_novas)} musicas via formatador em lote", sha_atual):
-                        st.success("Tudo gravado no repositório oficial com sucesso!")
-                        st.balloons()
+                # Salva o lote temporariamente na sessão do Streamlit para o segundo botão funcionar
+                st.session_state["df_lote_temporario"] = df_novas
             else:
                 st.warning("Nenhuma linha no padrão foi encontrada.")
+
+    # Se o lote foi processado, mostra o botão definitivo de gravação
+    if "df_lote_temporario" in st.session_state:
+        st.markdown("---")
+        if st.button("📥 CONFIRMAR: Gravar Todas essas músicas no Acervo definitivo?", type="secondary"):
+            df_novas = st.session_state["df_lote_temporario"]
+            df_final = pd.concat([df_acervo, df_novas], ignore_index=True)
+            
+            for col_nome in ["Nome do Arquivo", "Nome do arquivo"]:
+                if col_nome in df_final.columns:
+                    df_final.drop_duplicates(subset=[col_nome], keep="first", inplace=True)
+                    break
+                    
+            if salvar_banco_no_github(df_final, f"Adicionadas {len(df_novas)} musicas via formatador em lote", sha_atual):
+                st.success("Tudo gravado no repositório oficial com sucesso!")
+                del st.session_state["df_lote_temporario"]
+                st.balloons()
 
 # --- ABA 4: GERADOR DE SETLIST INSTAGRAM ---
 elif opcao == "📸 Gerador de Setlist (Instagram)":
