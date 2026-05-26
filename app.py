@@ -13,8 +13,8 @@ st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="
 
 # 🔐 CONTA DO ROBÔ (Quem envia)
 # Configure aqui o e-mail central e a senha de app de 16 dígitos do Google
-EMAIL_ROBO_REMETENTE = "heytuliusmusic@gmail.com"
-SENHA_ROBO_REMETENTE = "Interstellar"
+EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
+SENHA_ROBO_REMETENTE = "emgknhatfefumxgi"
 
 # 📥 SEU E-MAIL (Quem recebe o relatório de quem cadastrou o lote)
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
