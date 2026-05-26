@@ -7,14 +7,17 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 # ==========================================
-# 📻 CONFIGURAÇÃO DO PAINEL & CONFIGURAÇÕES DE E-MAIL
+# 📻 CONFIGURAÇÃO DO PAINEL & ALERTA DE E-MAIL
 # ==========================================
 st.set_page_config(page_title="Painel de Formatação Udesc FM", page_icon="📻", layout="wide")
 
-# CONFIGURAÇÕES DO ALERTA DE E-MAIL (Preencha aqui para ativar)
-EMAIL_REMETENTE = "seu_email_remetente@gmail.com"
-SENHA_REMETENTE = "sua_senha_de_app_aqui"  # Senha de app gerada na conta Google
-EMAIL_DESTINATARIO = "seu_email_que_recebe_notificacao@gmail.com"
+# 🔐 CONTA CENTRALIZADORA DE DISPARO (O Robô do App)
+# Coloque aqui um Gmail seu e a "Senha de App" de 16 dígitos dele para o robô funcionar
+EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
+SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
+
+# 📥 SEU E-MAIL FIXO QUE RECEBERÁ TODOS OS ALERTAS
+EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
 
 # 📊 LINKS DE EXPORTAÇÃO DIRETOS DO GOOGLE SHEETS
 URL_SOM_DA_ILHA_PRO = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv"
@@ -27,49 +30,49 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 📧 FUNÇÃO PARA DISPARAR O E-MAIL EM SEGUNDO PLANO
+# 📧 FUNÇÃO COM IDENTIFICAÇÃO DINÂMICA DE QUEM CADASTROU
 # ==========================================
-def enviar_notificacao_email(nome_acervo, df_novas):
-    # Se não configurou os e-mails, ignora silenciosamente para não quebrar o app
-    if "@" not in EMAIL_REMETENTE or "@" not in EMAIL_DESTINATARIO:
+def enviar_notificacao_email(nome_acervo, df_novas, email_usuario):
+    if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
         return
         
     try:
         msg = MIMEMultipart()
-        msg['From'] = EMAIL_REMETENTE
-        msg['To'] = EMAIL_DESTINATARIO
-        msg['Subject'] = f"📻 [Udesc FM] Novo Cadastro Realizado no Acervo: {nome_acervo}"
+        msg['From'] = f"Painel Udesc FM <{EMAIL_ROBO_REMETENTE}>"
+        msg['To'] = EMAIL_DESTINATARIO_OFICIAL
+        # Coloca o e-mail de quem cadastrou no Reply-To (se você responder, vai para a pessoa)
+        msg['Reply-To'] = email_usuario
+        msg['Subject'] = f"📻 Novo Cadastro no Acervo ({nome_acervo}) por: {email_usuario}"
         
-        # Monta a lista de músicas em texto para o corpo do e-mail
+        # Lista as músicas enviadas
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
-            linhas_musicas.append(f"• {linha['Artista']} - {linha['Música']} ({linha['Nome do Arquivo']})")
+            linhas_musicas.append(f"• {linha['Artista']} - {linha['Música']} [{linha['Nome do Arquivo']}]")
         lista_texto = "\n".join(linhas_musicas)
         
         corpo = f"""Olá Túlio,
 
-Um novo lote de músicas foi processado e cadastrado no painel do sistema!
+Um novo lote de músicas foi processado e cadastrado no sistema!
 
-📍 Destino selecionado: {nome_acervo}
+👤 Cadastrado por: {email_usuario}
+📍 Destino do lote: {nome_acervo}
 📅 Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 
-🎵 Músicas Adicionadas ({len(df_novas)} itens):
+🎵 Músicas Processadas ({len(df_novas)} itens):
 {lista_texto}
 
 ---
-Aviso automático do Painel Udesc FM."""
+Aviso automático do Painel de Controle Udesc FM."""
         
         msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
         
-        # Conexão segura com o servidor do Gmail
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
-        server.login(EMAIL_REMETENTE, SENHA_REMETENTE)
-        server.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
+        server.login(EMAIL_ROBO_REMETENTE, SENHA_ROBO_REMETENTE)
+        server.sendmail(EMAIL_ROBO_REMETENTE, EMAIL_DESTINATARIO_OFICIAL, msg.as_string())
         server.quit()
     except Exception as e:
-        # Mostra o erro na tela caso a senha ou e-mail estejam errados para te ajudar a depurar
-        st.sidebar.error(f"Erro ao enviar e-mail: {e}")
+        st.sidebar.error(f"Erro no envio do e-mail de alerta: {e}")
 
 # ==========================================
 # 🔄 LEITOR COMPLETO E ROBUSTO DE CADA PLANILHA
@@ -146,7 +149,7 @@ def carregar_banco_instagram(url):
 # ==========================================
 def processar_linha_musica(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
-    if not linha_original:
+    if not línea_original:
         return None
         
     linha_limpa_fim = linha_original.lower()
@@ -256,8 +259,6 @@ if opcao == "🔍 Buscar no Acervo":
             if not resultados.empty:
                 st.success(f"🎉 Encontradas {len(resultados)} correspondências!")
                 st.dataframe(resultados, use_container_width=True)
-            else:
-                st.error("Nenhuma música encontrada com este termo.")
 
 # ==========================================
 # 📋 ABA: VER TODO O ACERVO
@@ -280,11 +281,11 @@ elif opcao == "📋 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + AGORA COM ENVIO DE E-MAIL!
+# 💿 ABA: FORMATADOR DE ACERVO + ENVIOS COM IDENTIFICAÇÃO DINÂMICA
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Automatizador de Acervo Para Udesc FM")
-    st.markdown("Insira a lista de músicas para limpar, formatar e separar. Dica: Dê 2 cliques na tabela para editar os dados antes de salvar!")
+    st.markdown("Insira a lista de músicas para limpar, formatar e separar.")
 
     texto_bruto = st.text_area("Cole aqui as linhas brutas das músicas baixadas:", height=150)
 
@@ -335,15 +336,19 @@ elif opcao == "💿 Formatador de Acervo":
         st.session_state["lote_geral_atual"] = df_editado_g
         
         with st.expander("📥 MENU DE CADASTRO - Enviar este lote Geral para a planilha"):
+            u_email_g = st.text_input("Seu E-mail (Identificação):", key="email_user_g", placeholder="nome@udesc.br")
             destino_geral = st.selectbox("Escolha o destino:", ["Planilha Túlio", "Planilha Jéssica"])
+            
             if st.button(f"Confirmar e Gravar Músicas no(a) {destino_geral} 💾", key="btn_cad_geral"):
-                df_g_salvar = st.session_state["lote_geral_atual"].copy()
-                df_g_salvar["Acervo Origem"] = destino_geral.replace("Planilha ", "")
-                st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g_salvar], ignore_index=True)
-                
-                # DISPARA A NOTIFICAÇÃO POR E-MAIL AUTOMÁTICA
-                enviar_notificacao_email(destino_geral, df_g_salvar)
-                st.success(f"✅ Registradas com sucesso e e-mail de alerta enviado para o administrador!")
+                if "@" in u_email_g:
+                    df_g_salvar = st.session_state["lote_geral_atual"].copy()
+                    df_g_salvar["Acervo Origem"] = destino_geral.replace("Planilha ", "")
+                    st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g_salvar], ignore_index=True)
+                    
+                    enviar_notificacao_email(destino_geral, df_g_salvar, u_email_g)
+                    st.success(f"✅ Registradas! E-mail de alerta enviado para Túlio.")
+                else:
+                    st.error("⚠️ Digite um e-mail válido para se identificar antes de cadastrar.")
         st.markdown("---")
         
     # Lote SC (Som da Ilha)
@@ -353,14 +358,18 @@ elif opcao == "💿 Formatador de Acervo":
         st.session_state["lote_sc_atual"] = df_editado_s
         
         with st.expander("📥 MENU DE CADASTRO - Enviar este lote para o Som da Ilha"):
+            u_email_s = st.text_input("Seu E-mail (Identificação):", key="email_user_s", placeholder="nome@udesc.br")
+            
             if st.button("Confirmar e Gravar Músicas na Planilha Som da Ilha 💾", key="btn_cad_sc"):
-                df_s_salvar = st.session_state["lote_sc_atual"].copy()
-                df_s_salvar["Acervo Origem"] = "Som da Ilha"
-                st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s_salvar], ignore_index=True)
-                
-                # DISPARA A NOTIFICAÇÃO POR E-MAIL AUTOMÁTICA
-                enviar_notificacao_email("Som da Ilha", df_s_salvar)
-                st.success("✅ Registradas com sucesso no acervo e e-mail enviado!")
+                if "@" in u_email_s:
+                    df_s_salvar = st.session_state["lote_sc_atual"].copy()
+                    df_s_salvar["Acervo Origem"] = "Som da Ilha"
+                    st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s_salvar], ignore_index=True)
+                    
+                    enviar_notificacao_email("Som da Ilha", df_s_salvar, u_email_s)
+                    st.success("✅ Registradas com sucesso no acervo e e-mail enviado!")
+                else:
+                    st.error("⚠️ Digite um e-mail válido para se identificar antes de cadastrar.")
         st.markdown("---")
 
     # Histórico de Recentes
@@ -369,11 +378,11 @@ elif opcao == "💿 Formatador de Acervo":
         st.dataframe(st.session_state["banco_local_novas_musicas"], use_container_width=True)
         if st.button("🗑️ APAGAR / LIMPAR TODOS OS CADASTROS RECENTES", type="secondary"):
             st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
-            st.success("🔥 Todos os itens de teste/recentes foram apagados com sucesso!")
+            st.success("🔥 Todos os itens de teste/recentes foram apagados!")
             st.rerun()
 
 # ==========================================
-# 📸 ABA: GERADOR DE SETLIST INSTAGRAM (SEU CÓDIGO INTOCADO)
+# 📸 ABA: GERADOR DE SETLIST INSTAGRAM (CONFORME SEU CÓDIGO)
 # ==========================================
 elif opcao == "📸 Gerador de Setlist (Instagram)":
     st.title("📸 Formatador de Roteiro - Som da Ilha")
@@ -382,7 +391,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
     
     if erro: st.error(erro)
     else:
-        st.success("✅ Banco de dados dos artistas conectado e atualizado em tempo real!")
+        st.success("✅ Banco de dados dos artistas conectado em tempo real!")
         texto_bruto_sysrad = st.text_area("1. Cole aqui o roteiro bruto copiado do Sysrad:", height=250)
 
         if st.button("Formatar Roteiro ✨", type="primary"):
