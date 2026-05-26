@@ -7,15 +7,16 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 # ==========================================
-# 📻 CONFIGURAÇÃO DO PAINEL & ALERTA DE E-MAIL
+# 📻 CONFIGURAÇÃO DO PAINEL & CONTA DE DISPARO
 # ==========================================
-st.set_page_config(page_title="Painel de Formatação Udesc FM", page_icon="📻", layout="wide")
+st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
-# 🔐 CONTA CENTRALIZADORA DE DISPARO (O Robô do App)
+# 🔐 CONTA DO ROBÔ (Quem envia)
+# Coloque aqui o e-mail da rádio ou o seu que gerou a "Senha de App" de 16 dígitos no Google
 EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
 SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
 
-# 📥 SEU E-MAIL FIXO QUE RECEBERÁ TODOS OS ALERTAS
+# 📥 SEU E-MAIL (Quem recebe o alerta de quem cadastrou)
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
 
 # 📊 LINKS DE EXPORTAÇÃO DIRETOS DO GOOGLE SHEETS
@@ -29,9 +30,9 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 📧 FUNÇÃO COM IDENTIFICAÇÃO DINÂMICA
+# 📧 FUNÇÃO DE NOTIFICAÇÃO (MOSTRA QUEM E O QUE FOI CADASTRADO)
 # ==========================================
-def enviar_notificacao_email(nome_acervo, df_novas, email_usuario):
+def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
     if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
         return
         
@@ -39,8 +40,9 @@ def enviar_notificacao_email(nome_acervo, df_novas, email_usuario):
         msg = MIMEMultipart()
         msg['From'] = f"Painel Udesc FM <{EMAIL_ROBO_REMETENTE}>"
         msg['To'] = EMAIL_DESTINATARIO_OFICIAL
-        msg['Reply-To'] = email_usuario
-        msg['Subject'] = f"📻 Novo Cadastro no Acervo ({nome_acervo}) por: {email_usuario}"
+        
+        # O assunto já te mostra direto na caixa de entrada quem fez o procedimento
+        msg['Subject'] = f"📻 Novo Cadastro por: {nome_usuario} ({nome_acervo})"
         
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
@@ -49,11 +51,11 @@ def enviar_notificacao_email(nome_acervo, df_novas, email_usuario):
         
         corpo = f"""Olá Túlio,
 
-Um novo lote de músicas foi processado e cadastrado no sistema!
+Um novo lote de músicas foi processado e armazenado no painel!
 
-👤 Cadastrado por: {email_usuario}
-📍 Destino do lote: {nome_acervo}
-📅 Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+👤 QUEM CADASTROU: {nome_usuario}
+📍 DESTINO DO LOTE: Planilha {nome_acervo}
+📅 DATA/HORA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 
 🎵 Músicas Processadas ({len(df_novas)} itens):
 {lista_texto}
@@ -69,7 +71,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         server.sendmail(EMAIL_ROBO_REMETENTE, EMAIL_DESTINATARIO_OFICIAL, msg.as_string())
         server.quit()
     except Exception as e:
-        st.sidebar.error(f"Erro no envio do e-mail de alerta: {e}")
+        st.sidebar.error(f"Erro ao disparar e-mail de alerta: {e}")
 
 # ==========================================
 # 🔄 LEITOR DAS PLANILHAS
@@ -150,7 +152,7 @@ def processar_linha_musica(linha_bruta):
         return None
         
     linha_limpa_fim = linha_original.lower()
-    if linha_limpa_fim.endswith(".mp3"):
+    if Chat_clean := linha_limpa_fim.endswith(".mp3"):
         linha_limpa_fim = linha_limpa_fim[:-4].strip()
         
     eh_sc = False
@@ -181,7 +183,7 @@ def processar_linha_musica(linha_bruta):
     if busca_comp:
         compositores_com_parentese = busca_comp.group(0)
         compositores = re.sub(r'\((comp\.|compa)\s*', '', compositores_com_parentese, flags=re.IGNORECASE).rstrip(')')
-        linha_trabalho = linha_trabalho.replace(compositores_com_parentese, "").replace("  ", " ")
+        linha_trabalho = Jazz_clean := linha_trabalho.replace(compositores_com_parentese, "").replace("  ", " ")
 
     partes = [p.strip() for p in linha_trabalho.split(" - ")]
     if len(partes) < 2:
@@ -224,11 +226,11 @@ def processar_linha_musica(linha_bruta):
     }
 
 
-# --- INTERFACE DE NAVEGAÇÃO ---
-st.sidebar.title("📻 Painel de Controle")
+# --- INTERFACE DE NAVEGAÇÃO ORIGINAL ---
+st.sidebar.title("Painel de Controle")
 opcao = st.sidebar.radio(
     "Navegar para:",
-    ["🔍 Buscar no Acervo", "📋 Ver Todo o Acervo", "💿 Formatador de Acervo", "📸 Gerador de Setlist (Instagram)"]
+    ["🔍 Buscar no Acervo", "📂 Cadastrar Novas Músicas", "💿 Formatador de Linhas", "📸 Gerador de Setlist (Instagram)"]
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Udesc FM 🎧")
@@ -238,31 +240,31 @@ st.sidebar.caption("Udesc FM 🎧")
 # 🔍 ABA: BUSCAR NO ACERVO
 # ==========================================
 if opcao == "🔍 Buscar no Acervo":
-    st.title("🔍 Busca Integrada no Acervo")
+    st.title("🔍 Acervo Oficial Integrado - Udesc FM")
     df_total = carregar_todos_os_acervos_reais()
     
-    if not df_total.empty:
-        st.write(f"📊 **Total de músicas indexadas no sistema:** {len(df_total)}")
-        termo = st.text_input("Digite o artista, nome da música ou arquivo para pesquisar:")
+    st.write("Digite o artista, nome da música ou nome do arquivo:")
+    termo = st.text_input("", label_visibility="collapsed")
+    
+    if termo:
+        termo_lower = termo.lower()
+        mascara = pd.Series(False, index=df_total.index)
+        for col in df_total.columns:
+            if col != "Acervo Origem":
+                mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
         
-        if termo:
-            termo_lower = termo.lower()
-            mascara = pd.Series(False, index=df_total.index)
-            for col in df_total.columns:
-                if col != "Acervo Origem":
-                    mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
-            
-            resultados = df_total[mascara]
-            if not resultados.empty:
-                st.success(f"🎉 Encontradas {len(resultados)} correspondências!")
-                st.dataframe(resultados, use_container_width=True)
+        resultados = df_total[mascara]
+        if not resultados.empty:
+            st.dataframe(resultados, use_container_width=True)
+        else:
+            st.error("Nenhuma música encontrada.")
 
 # ==========================================
-# 📋 ABA: VER TODO O ACERVO
+# 📂 ABA: CADASTRAR NOVAS MÚSICAS
 # ==========================================
-elif opcao == "📋 Ver Todo o Acervo":
-    st.title("📋 Visualização do Acervo por Filtros")
-    filtro_banco = st.selectbox("Selecione qual acervo específico deseja analisar:", ["Todos os Acervos Juntos", "Apenas Túlio", "Apenas Jéssica", "Apenas Som da Ilha"])
+elif opcao == "📂 Cadastrar Novas Músicas":
+    st.title("📋 Visualização Geral do Acervo")
+    filtro_banco = st.selectbox("Selecione qual acervo deseja analisar:", ["Todos os Acervos Juntos", "Apenas Túlio", "Apenas Jéssica", "Apenas Som da Ilha"])
     
     if filtro_banco == "Todos os Acervos Juntos":
         df_exibir = carregar_todos_os_acervos_reais()
@@ -274,14 +276,13 @@ elif opcao == "📋 Ver Todo o Acervo":
         df_exibir = carregar_planilha_especifica("Som da Ilha")
         
     if not df_exibir.empty:
-        st.write(f"Exibindo **{len(df_exibir)}** linhas referentes à seleção feita:")
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO
+# 💿 ABA: FORMATADOR DE LINHAS
 # ==========================================
-elif opcao == "💿 Formatador de Acervo":
-    st.title("💿 Automatizador de Acervo Para Udesc FM")
+elif opcao == "💿 Formatador de Linhas":
+    st.title("Automatizador de Acervo Para Udesc FM")
     st.markdown("Insira a lista de músicas para limpar, formatar e separar.")
 
     texto_bruto = st.text_area("Cole aqui as linhas brutas das músicas baixadas:", height=150)
@@ -333,19 +334,19 @@ elif opcao == "💿 Formatador de Acervo":
         st.session_state["lote_geral_atual"] = df_editado_g
         
         with st.expander("📥 MENU DE CADASTRO - Enviar este lote Geral para a planilha"):
-            u_email_g = st.text_input("Seu E-mail (Identificação):", key="email_user_g", placeholder="nome@udesc.br")
+            u_nome_g = st.text_input("Seu Nome (Identificação):", key="nome_user_g", placeholder="Ex: João Silva")
             destino_geral = st.selectbox("Escolha o destino:", ["Planilha Túlio", "Planilha Jéssica"])
             
             if st.button(f"Confirmar e Gravar Músicas no(a) {destino_geral} 💾", key="btn_cad_geral"):
-                if "@" in u_email_g:
+                if u_nome_g.strip():
                     df_g_salvar = st.session_state["lote_geral_atual"].copy()
                     df_g_salvar["Acervo Origem"] = destino_geral.replace("Planilha ", "")
                     st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g_salvar], ignore_index=True)
                     
-                    enviar_notificacao_email(destino_geral, df_g_salvar, u_email_g)
-                    st.success(f"✅ Registradas! E-mail de alerta enviado para Túlio.")
+                    enviar_notificacao_email(destino_geral, df_g_salvar, u_nome_g)
+                    st.success(f"✅ Registradas! Notificação enviada para o e-mail do Túlio.")
                 else:
-                    st.error("⚠️ Digite um e-mail válido para se identificar antes de cadastrar.")
+                    st.error("⚠️ Insira o seu nome para identificação antes de cadastrar.")
         st.markdown("---")
         
     # Lote SC (Som da Ilha)
@@ -355,28 +356,19 @@ elif opcao == "💿 Formatador de Acervo":
         st.session_state["lote_sc_atual"] = df_editado_s
         
         with st.expander("📥 MENU DE CADASTRO - Enviar este lote para o Som da Ilha"):
-            u_email_s = st.text_input("Seu E-mail (Identificação):", key="email_user_s", placeholder="nome@udesc.br")
+            u_nome_s = st.text_input("Seu Nome (Identificação):", key="nome_user_s", placeholder="Ex: João Silva")
             
             if st.button("Confirmar e Gravar Músicas na Planilha Som da Ilha 💾", key="btn_cad_sc"):
-                if "@" in u_email_s:
+                if u_nome_s.strip():
                     df_s_salvar = st.session_state["lote_sc_atual"].copy()
                     df_s_salvar["Acervo Origem"] = "Som da Ilha"
                     st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s_salvar], ignore_index=True)
                     
-                    enviar_notificacao_email("Som da Ilha", df_s_salvar, u_email_s)
-                    st.success("✅ Registradas com sucesso no acervo e e-mail enviado!")
+                    enviar_notificacao_email("Som da Ilha", df_s_salvar, u_nome_s)
+                    st.success("✅ Registradas com sucesso no acervo e notificação enviada!")
                 else:
-                    st.error("⚠️ Digite um e-mail válido para se identificar antes de cadastrar.")
+                    st.error("⚠️ Insira o seu nome para identificação antes de cadastrar.")
         st.markdown("---")
-
-    # Histórico de Recentes
-    st.subheader("⏱️ Gerenciamento de Itens Cadastrados Recentemente")
-    if not st.session_state["banco_local_novas_musicas"].empty:
-        st.dataframe(st.session_state["banco_local_novas_musicas"], use_container_width=True)
-        if st.button("🗑️ APAGAR / LIMPAR TODOS OS CADASTROS RECENTES", type="secondary"):
-            st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
-            st.success("🔥 Todos os itens de teste/recentes foram apagados!")
-            st.rerun()
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
@@ -393,7 +385,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
 
         if st.button("Formatar Roteiro ✨", type="primary"):
             if texto_bruto_sysrad:
-                linhas = texto_bruto_sysrad_sysrad.split('\n')
+                linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
                     linha = linha.strip()
