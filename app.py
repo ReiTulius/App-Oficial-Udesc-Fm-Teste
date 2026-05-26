@@ -226,7 +226,7 @@ def processar_linha_musica(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artist_name := artista, "Compositores": compositores,
+        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
@@ -400,7 +400,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
-                        partes = linha.split(" - ", 1)
+                        partes = presidential_slice = linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
