@@ -8,10 +8,10 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="Painel de Formatação Udesc FM", page_icon="📻", layout="wide")
 
-# 📊 LINKS DE LEITURA ROBUSTA (Força o Google a abrir todas as abas internas em formato de dados)
-URL_SOM_DA_ILHA_PRO = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/gviz/tq?tqx=out:csv"
-URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/gviz/tq?tqx=out:csv"
-URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/gviz/tq?tqx=out:csv"
+# 📊 LINKS DE EXPORTAÇÃO DIRETOS E PADRONIZADOS DO GOOGLE SHEETS
+URL_SOM_DA_ILHA_PRO = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv"
+URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/export?format=csv"
+URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 
 # Link original usado exclusivamente pelo seu gerador de setlist do Instagram
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
@@ -21,44 +21,49 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 🔄 LEITOR COMPLETO DE TODAS AS PLANILHAS SEM EXCEÇÃO
+# 🔄 LEITOR COMPLETO E ROBUSTO DE CADA PLANILHA
 # ==========================================
-@st.cache_data(ttl=10)  # Atualiza rápido para mostrar novos cadastros
+@st.cache_data(ttl=5)  # Atualização quase instantânea para o fluxo de apagar/cadastrar
+def carregar_planilha_especifica(nome_acervo):
+    url_map = {
+        "Som da Ilha": URL_SOM_DA_ILHA_PRO,
+        "Túlio": URL_TULIO_PRO,
+        "Jéssica": URL_JESSICA_PRO
+    }
+    url = url_map.get(nome_acervo)
+    try:
+        # Força o pandas a ler tratando erros de encoding comuns no Sysrad/Google
+        df = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip', encoding='utf-8')
+        if df.empty:
+            df = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip', encoding='latin1')
+        
+        if not df.empty:
+            df.dropna(how='all', inplace=True)
+            df.columns = [str(c).strip() for c in df.columns]
+            # Identifica a origem do dado para o filtro
+            df["Acervo Origem"] = nome_acervo
+            return df
+    except:
+        pass
+    return pd.DataFrame()
+
 def carregar_todos_os_acervos_reais():
     lista_dfs = []
     
-    # 1. Tenta ler Som da Ilha
-    try:
-        df1 = pd.read_csv(URL_SOM_DA_ILHA_PRO, on_bad_lines='skip')
-        if not df1.empty:
-            lista_dfs.append(df1)
-    except: pass
-
-    # 2. Tenta ler Planilha Túlio
-    try:
-        df2 = pd.read_csv(URL_TULIO_PRO, on_bad_lines='skip')
-        if not df2.empty:
-            lista_dfs.append(df2)
-    except: pass
-
-    # 3. Tenta ler Planilha Jéssica
-    try:
-        df3 = pd.read_csv(URL_JESSICA_PRO, on_bad_lines='skip')
-        if not df3.empty:
-            lista_dfs.append(df3)
-    except: pass
+    for nome in ["Som da Ilha", "Túlio", "Jéssica"]:
+        df_part = carregar_planilha_especifica(nome)
+        if not df_part.empty:
+            lista_dfs.append(df_part)
 
     if lista_dfs:
         df_unificado = pd.concat(lista_dfs, ignore_index=True)
-        df_unificado.dropna(how='all', inplace=True)
-        # Limpa nomes de colunas com problemas de espaços do Google
-        df_unificado.columns = [str(c).strip() for c in df_unificado.columns]
         
-        # Injeta as músicas recém-cadastradas pelo formatador para aparecerem na busca na hora!
+        # Injeta as músicas recém-cadastradas temporariamente para o buscador
         if not st.session_state["banco_local_novas_musicas"].empty:
             df_unificado = pd.concat([df_unificado, st.session_state["banco_local_novas_musicas"]], ignore_index=True)
             
         return df_unificado
+        
     return st.session_state["banco_local_novas_musicas"]
 
 
@@ -199,21 +204,22 @@ st.sidebar.caption("Udesc FM 🎧")
 
 
 # ==========================================
-# 🔍 ABA: BUSCAR NO ACERVO (TODAS AS 3 PLANILHAS CORRIGIDAS)
+# 🔍 ABA: BUSCAR NO ACERVO
 # ==========================================
 if opcao == "🔍 Buscar no Acervo":
     st.title("🔍 Busca Integrada no Acervo")
     df_total = carregar_todos_os_acervos_reais()
     
     if not df_total.empty:
-        st.write(f"📊 **Total de músicas carregadas (Som da Ilha + Túlio + Jéssica):** {len(df_total)}")
+        st.write(f"📊 **Total de músicas indexadas no sistema:** {len(df_total)}")
         termo = st.text_input("Digite o artista, nome da música ou arquivo para pesquisar:")
         
         if termo:
             termo_lower = termo.lower()
             mascara = pd.Series(False, index=df_total.index)
             for col in df_total.columns:
-                mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
+                if col != "Acervo Origem":
+                    mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
             
             resultados = df_total[mascara]
             if not resultados.empty:
@@ -222,29 +228,39 @@ if opcao == "🔍 Buscar no Acervo":
             else:
                 st.error("Nenhuma música encontrada com este termo.")
     else:
-        st.warning("⚠️ Aguardando carregamento ou sem dados nas planilhas do Google.")
+        st.warning("⚠️ Carregando dados das planilhas... Certifique-se de que estão públicas na web.")
 
 # ==========================================
-# 📋 ABA: VER TODO O ACERVO (TODAS AS 3 PLANILHAS CORRIGIDAS)
+# 📋 ABA: VER TODO O ACERVO (COM FILTRO ESPECÍFICO)
 # ==========================================
 elif opcao == "📋 Ver Todo o Acervo":
-    st.title("📋 Visualização Completa do Acervo Unificado")
-    df_total = carregar_todos_os_acervos_reais()
+    st.title("📋 Visualização do Acervo por Filtros")
     
-    if not df_total.empty:
-        st.write(f"Exibindo a lista combinada de todas as **{len(df_total)}** linhas encontradas nas suas planilhas:")
-        st.dataframe(df_total, use_container_width=True)
+    filtro_banco = st.selectbox("Selecione qual acervo específico deseja analisar:", ["Todos os Acervos Juntos", "Apenas Túlio", "Apenas Jéssica", "Apenas Som da Ilha"])
+    
+    if filtro_banco == "Todos os Acervos Juntos":
+        df_exibir = carregar_todos_os_acervos_reais()
+    elif filtro_banco == "Apenas Túlio":
+        df_exibir = carregar_planilha_especifica("Túlio")
+    elif filtro_banco == "Apenas Jéssica":
+        df_exibir = carregar_planilha_especifica("Jéssica")
     else:
-        st.warning("Nenhum dado disponível para exibir.")
+        df_exibir = carregar_planilha_especifica("Som da Ilha")
+        
+    if not df_exibir.empty:
+        st.write(f"Exibindo **{len(df_exibir)}** linhas referentes à seleção feita:")
+        st.dataframe(df_exibir, use_container_width=True)
+    else:
+        st.warning("Nenhum dado disponível para este acervo no momento.")
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + NOVO MENU DE CADASTRO INTEGRADO!
+# 💿 ABA: FORMATADOR DE ACERVO + CADASTROS RECENTES + OPÇÃO DE DELETAR TESTES
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Automatizador de Acervo Para Udesc FM")
     st.markdown("Insira a lista de músicas para limpar, formatar e separar para o Acervo Geral ou Som da Ilha (SC).")
 
-    texto_bruto = st.text_area("Cole aqui as linhas brutas das músicas baixadas (pode misturar normais e com SC):", height=200, placeholder="M:\\...")
+    texto_bruto = st.text_area("Cole aqui as linhas brutas das músicas baixadas (pode misturar normais e com SC):", height=180, placeholder="M:\\...")
 
     if st.button("Processar e Organizar Acervos 🚀", type="primary"):
         if texto_bruto:
@@ -276,7 +292,6 @@ elif opcao == "💿 Formatador de Acervo":
                         }
                         lista_geral.append(dados_geral)
             
-            # Armazena os lotes formatados na sessão para o menu de cadastro usar
             if lista_geral:
                 df_g = pd.DataFrame(lista_geral).drop_duplicates(subset=["Nome do Arquivo"], keep="first")
                 st.session_state["lote_geral_atual"] = df_g
@@ -291,39 +306,52 @@ elif opcao == "💿 Formatador de Acervo":
                 
             st.balloons()
 
-    # --- MENU DE CADASTRO PARA O ACERVO GERAL ---
+    # --- EXIBIÇÃO DOS LOTES E BOTÕES DE ENVIO ---
     if "lote_geral_atual" in st.session_state:
         df_g = st.session_state["lote_geral_atual"]
         st.success(f"🎉 {len(df_g)} músicas prontas para o ACERVO GERAL!")
         st.dataframe(df_g, use_container_width=True)
         
-        # Bloco Interativo de Cadastro Vinculado
-        with st.expander("📥 MENU DE CADASTRO - Enviar este lote para o Sistema Oficial"):
-            destino_geral = st.selectbox("Escolha para qual planilha enviar este lote Geral:", ["Planilha Túlio", "Planilha Jéssica"])
+        with st.expander("📥 MENU DE CADASTRO - Enviar este lote Geral para a planilha"):
+            destino_geral = st.selectbox("Escolha o destino:", ["Planilha Túlio", "Planilha Jéssica"])
             if st.button(f"Confirmar e Gravar Músicas no(a) {destino_geral} 💾", key="btn_cad_geral"):
+                df_g["Acervo Origem"] = destino_geral.replace("Planilha ", "")
                 st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g], ignore_index=True)
-                st.success(f"✅ Sucesso! As {len(df_g)} músicas foram cadastradas e unificadas no painel do {destino_geral}!")
-                st.caption("As músicas já estão integradas ao buscador do app.")
+                st.success(f"✅ Registradas com sucesso no acervo do(a) {destino_geral}!")
         st.markdown("---")
         
-    # --- MENU DE CADASTRO PARA O SOM DA ILHA ---
     if "lote_sc_atual" in st.session_state:
         df_s = st.session_state["lote_sc_atual"]
-        st.warning(f"🏝️ {len(df_s)} músicas de Santa Catarina identificadas para o SOM DA ILHA!")
+        st.warning(f"🏝️ {len(df_s)} músicas catarinenses prontas para o SOM DA ILHA!")
         st.dataframe(df_s, use_container_width=True)
         
         with st.expander("📥 MENU DE CADASTRO - Enviar este lote para o Som da Ilha"):
             if st.button("Confirmar e Gravar Músicas na Planilha Som da Ilha 💾", key="btn_cad_sc"):
+                df_s["Acervo Origem"] = "Som da Ilha"
                 st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s], ignore_index=True)
-                st.success(f"✅ Sucesso! As {len(df_s)} músicas catarinenses foram injetadas na base do Som da Ilha!")
+                st.success("✅ Registradas com sucesso no acervo do Som da Ilha!")
         st.markdown("---")
+
+    # --- SEÇÃO DO CONTROLE DE CADASTROS RECENTES / DELETAR ERROS ---
+    st.subheader("⏱️ Gerenciamento de Itens Cadastrados Recentemente")
+    if not st.session_state["banco_local_novas_musicas"].empty:
+        st.write("Abaixo estão os itens enviados nesta sessão de trabalho. Se algo foi teste ou está errado, você pode limpar abaixo:")
+        st.dataframe(st.session_state["banco_local_novas_musicas"], use_container_width=True)
+        
+        if st.button("🗑️ APAGAR / LIMPAR TODOS OS CADASTROS RECENTES", type="secondary"):
+            st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
+            st.success("🔥 Todos os itens de teste/recentes foram apagados com sucesso do painel!")
+            st.rerun()
+    else:
+        st.caption("Nenhum cadastro realizado ou testado nesta sessão ainda.")
+
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM (SEU CÓDIGO INTOCADO)
 # ==========================================
 elif opcao == "📸 Gerador de Setlist (Instagram)":
     st.title("📸 Formatador de Roteiro - Som da Ilha")
-    st.markdown("Instruções: Cole o texto do Sysrad e clique em formatar. A lista de Instagrams é updated automaticamente via Google Drive.")
+    st.markdown("Instruções: Cole o texto do Sysrad e clique em formatar.")
 
     banco_instagram, erro = carregar_banco_instagram(URL_GOOGLE_SHEETS)
     
@@ -363,9 +391,6 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                         resultado.append(linha_final)
                 
                 texto_formatado = "\n".join(resultado)
-                
                 st.subheader("📋 Roteiro Pronto para as Redes Sociais:")
                 st.text_area("Selecione tudo e copie:", value=texto_formatado, height=350)
                 st.balloons()
-            else:
-                st.warning("Por favor, cole o roteiro do Sysrad antes de formatar.")
