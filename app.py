@@ -12,7 +12,6 @@ from datetime import datetime
 st.set_page_config(page_title="Painel de Formatação Udesc FM", page_icon="📻", layout="wide")
 
 # 🔐 CONTA CENTRALIZADORA DE DISPARO (O Robô do App)
-# Substitua abaixo com o e-mail da rádio/seu e a "Senha de App" de 16 dígitos do Google
 EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
 SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
 
@@ -143,11 +142,11 @@ def carregar_banco_instagram(url):
 
 
 # ==========================================
-# FUNÇÕES DO FORMATADOR DE ACERVO (CORRIGIDO)
+# FUNÇÕES DO FORMATADOR DE ACERVO
 # ==========================================
 def processar_linha_musica(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
-    if not linha_original:  # CORRIGIDO AQUI (Estava línea_original)
+    if not linha_original:
         return None
         
     linha_limpa_fim = linha_original.lower()
@@ -218,7 +217,7 @@ def processar_linha_musica(linha_bruta):
     nome_arquivo_formatado = re.sub(r'\s+', ' ', nome_arquivo_formatado).strip()
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artist_name := artista, "Compositores": compositores,
+        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": datetime.now().strftime("%d/%m/%Y"), "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
@@ -394,7 +393,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
 
         if st.button("Formatar Roteiro ✨", type="primary"):
             if texto_bruto_sysrad:
-                linhas = texto_bruto_sysrad.split('\n')
+                linhas = texto_bruto_sysrad_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
                     linha = linha.strip()
