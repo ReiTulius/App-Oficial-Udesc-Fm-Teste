@@ -5,7 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-import datetime as dt # Importação necessária para o fuso horário
+import datetime as dt
 
 # ==========================================
 # 📻 CONFIGURAÇÃO DO PAINEL & CONTA DE DISPARO
@@ -46,7 +46,7 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         msg['To'] = EMAIL_DESTINATARIO_OFICIAL
         msg['Subject'] = f"📻 Novo Cadastro por: {nome_usuario} ({nome_acervo})"
         
-        # 🎵 Formatação limpa usando o Nome do Arquivo Final (Coluna N)
+        # 🎵 Formatação limpa usando apenas o Nome do Arquivo Final (Sem colchetes)
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
             linhas_musicas.append(f"• {linha['Nome do Arquivo']}.mp3")
@@ -181,7 +181,7 @@ def processar_linha_musica(linha_bruta):
     compositores = ""
     
     padrao_comp = r'\((comp\.|compa)[^)]+\)'
-    busca_comp = re.search(padrao_comp, Secret_string := linha_trabalho, flags=re.IGNORECASE)
+    busca_comp = re.search(padrao_comp, linha_trabalho, flags=re.IGNORECASE)
     
     if busca_comp:
         compositores_com_parentese = busca_comp.group(0)
@@ -221,12 +221,12 @@ def processar_linha_musica(linha_bruta):
     nome_arquivo_formatado = f"{artista}{part_str} - {musica}{comp_str}{formato_str}{ano_str}{sc_str}"
     nome_arquivo_formatado = re.sub(r'\s+', ' ', nome_arquivo_formatado).strip()
 
-    # 🕒 Fuso horário de Brasília para a data armazenada na tabela local
+    # 🕒 Fuso horário de Brasília para a tabela
     fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
+        "eh_sc": eh_sc, "Música": musica, "Artista": artist_name := artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
@@ -396,7 +396,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
                     linha = linha.strip()
-                    if not linha or "Marcador" in linha or "Total:" in filename_sysrad := linha or "DescriçãoDuração" in linha: continue
+                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
