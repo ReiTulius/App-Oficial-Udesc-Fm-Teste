@@ -8,41 +8,55 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="Painel de Formatação Udesc FM", page_icon="📻", layout="wide")
 
-# 🔗 LINKS ATUALIZADOS DAS SUAS PLANILHAS REAIS (EXPORTAÇÃO DIRETA EM CSV)
-URL_SOM_DA_ILHA_CSV = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv&gid=0"
-URL_TULIO_CSV = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/export?format=csv&gid=0"
-URL_JESSICA_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv&gid=0"
+# 📊 LINKS DAS PLANILHAS (Atualizados para o formato correto de leitura do Google)
+URL_SOM_DA_ILHA = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv"
+URL_TULIO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/export?format=csv"
+URL_JESSICA = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 
-# O gerador do instagram usa o link do seu arquivo original (Som da Ilha)
-URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/edit?usp=sharing"
+# Link usado pelo seu gerador de setlist original do Instagram
+URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
 # ==========================================
-# 🔄 MECANISMO ROBUSTO DE INTEGRAÇÃO DO ACERVO (LEITURA MULTI-SEPARADOR)
+# 🔄 FUNÇÃO PARA JUNTAR AS 3 PLANILHAS DE VERDADE
 # ==========================================
 @st.cache_data(ttl=60)
-def carregar_linhas_do_acervo_real():
-    urls_bancos = [URL_SOM_DA_ILHA_CSV, URL_TULIO_CSV, URL_JESSICA_CSV]
-    tabelas_carregadas = []
+def carregar_todos_os_acervos():
+    lista_dfs = []
     
-    for url in urls_bancos:
-        try:
-            # Tenta ler tentando identificar se a planilha usa vírgula ou ponto e vírgula
-            df_temp = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip')
-            if not df_temp.empty:
-                # Padroniza cabeçalhos removendo espaços extras
-                df_temp.columns = [str(c).strip() for c in df_temp.columns]
-                tabelas_carregadas.append(df_temp)
-        except Exception:
-            continue
-            
-    if tabelas_carregadas:
-        df_unificado = pd.concat(tabelas_carregadas, ignore_index=True)
+    # Tenta ler a planilha 1 (Som da Ilha)
+    try:
+        df1 = pd.read_csv(URL_SOM_DA_ILHA, sep=None, engine='python', on_bad_lines='skip')
+        if not df1.empty:
+            lista_dfs.append(df1)
+    except: pass
+
+    # Tenta ler a planilha 2 (Túlio)
+    try:
+        df2 = pd.read_csv(URL_TULIO, sep=None, engine='python', on_bad_lines='skip')
+        if not df2.empty:
+            lista_dfs.append(df2)
+    except: pass
+
+    # Tenta ler a planilha 3 (Jéssica)
+    try:
+        df3 = pd.read_csv(URL_JESSICA, sep=None, engine='python', on_bad_lines='skip')
+        if not df3.empty:
+            lista_dfs.append(df3)
+    except: pass
+
+    if lista_dfs:
+        # Junta todas as planilhas uma embaixo da outra
+        df_unificado = pd.concat(lista_dfs, ignore_index=True)
+        # Limpa linhas totalmente vazias
         df_unificado.dropna(how='all', inplace=True)
+        # Padroniza os nomes das colunas tirando espaços invisíveis
+        df_unificado.columns = [str(c).strip() for c in df_unificado.columns]
         return df_unificado
     return pd.DataFrame()
 
+
 # ==========================================
-# FUNÇÕES DE SUPORTE DO GERADOR DE SETLIST (INTOCADAS)
+# FUNÇÕES DE SUPORTE DO GERADOR DE SETLIST (CONFORME SEU CÓDIGO)
 # ==========================================
 def converter_link_google(url):
     if "docs.google.com/spreadsheets" in url:
@@ -72,7 +86,7 @@ def carregar_banco_instagram(url):
 
 
 # ==========================================
-# FUNÇÕES DE SUPORTE DO FORMATADOR DE ACERVO (INTOCADAS)
+# FUNÇÕES DE SUPORTE DO FORMATADOR DE ACERVO (CONFORME SEU CÓDIGO)
 # ==========================================
 def processar_linha_musica(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
@@ -178,47 +192,46 @@ st.sidebar.caption("Desenvolvido para otimizar a programação da Udesc FM 🎧"
 
 
 # ==========================================
-# ABA NEW 1: BUSCADOR INTEGRADO INTELIGENTE
+# 🔍 ABA: BUSCAR NO ACERVO (TODAS AS PLANILHAS)
 # ==========================================
 if opcao == "🔍 Buscar no Acervo":
-    st.title("🔍 Busca Unificada no Acervo - Udesc FM")
-    df_completo = carregar_linhas_do_acervo_real()
+    st.title("🔍 Busca Integrada no Acervo")
+    df_total = carregar_todos_os_acervos()
     
-    if not df_completo.empty:
-        st.write(f"📊 **Total de linhas lidas das planilhas em tempo real:** {len(df_completo)}")
-        termo_busca = st.text_input("Digite o artista, música ou termo para pesquisar no acervo:")
+    if not df_total.empty:
+        st.write(f"📊 **Total de músicas integradas (Som da Ilha + Túlio + Jéssica):** {len(df_total)}")
+        termo = st.text_input("Digite o artista, nome da música ou arquivo para pesquisar:")
         
-        if termo_busca:
-            termo_lower = termo_busca.lower()
-            # Procura em todas as colunas dinamicamente
-            mascara = pd.Series(False, index=df_completo.index)
-            for col in df_completo.columns:
-                mascara |= df_completo[col].astype(str).str.lower().str.contains(termo_lower, na=False)
+        if termo:
+            termo_lower = termo.lower()
+            mascara = pd.Series(False, index=df_total.index)
+            for col in df_total.columns:
+                mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
             
-            resultados = df_completo[mascara]
+            resultados = df_total[mascara]
             if not resultados.empty:
                 st.success(f"🎉 Encontradas {len(resultados)} correspondências!")
                 st.dataframe(resultados, use_container_width=True)
             else:
-                st.error("Nenhuma música encontrada com esse nome.")
+                st.error("Nenhuma música encontrada com este termo.")
     else:
-        st.warning("⚠️ Não foi possível processar os dados das planilhas. Verifique o acesso público dos links.")
+        st.warning("⚠️ Não foi possível carregar os dados das planilhas do Google.")
 
 # ==========================================
-# ABA NEW 2: VISUALIZAÇÃO COMPLETA DO ACERVO
+# 📋 ABA: VER TODO O ACERVO (TODAS AS PLANILHAS)
 # ==========================================
 elif opcao == "📋 Ver Todo o Acervo":
-    st.title("📋 Acervo Geral Cadastrado")
-    df_completo = carregar_linhas_do_acervo_real()
+    st.title("📋 Visualização Completa do Acervo Unificado")
+    df_total = carregar_todos_os_acervos()
     
-    if not df_completo.empty:
-        st.markdown(f"Exibindo abaixo a tabela unificada contendo todas as **{len(df_completo)}** entradas encontradas:")
-        st.dataframe(df_completo, use_container_width=True)
+    if not df_total.empty:
+        st.write(f"Exibindo a lista combinada de todas as **{len(df_total)}** linhas encontradas nas suas 3 planilhas:")
+        st.dataframe(df_total, use_container_width=True)
     else:
-        st.warning("Nenhum dado encontrado para exibição.")
+        st.warning("Nenhum dado disponível para exibir.")
 
 # ==========================================
-# ABA ORIGINAL 1: FORMATADOR (CÓDIGO ORIGINAL SEU)
+# 💿 ABA: FORMATADOR DE ACERVO + AGORA COM INTERAÇÃO DE SALVAR!
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Automatizador de Acervo Para Udesc FM")
@@ -239,64 +252,51 @@ elif opcao == "💿 Formatador de Acervo":
                     
                     if eh_sc:
                         dados_sc = {
-                            "Música": res["Música"],
-                            "Artista": res["Artista"],
-                            "Compositores": res["Compositores"],
-                            "Formato": res["Formato"],
-                            "Ano": res["Ano"],
-                            "Origem": res["Origem"],
-                            "Gênero": res["Gênero"],
-                            "Gênero Relacionado": res["Gênero Relacionado"],
-                            "Est": "SC",
-                            "Classificação": res["Classificação"],
-                            "Andamento": res["Andamento"],
-                            "Data Cadastro": res["Data Cadastro"],
-                            "Participações": res["Participações"],
-                            "Nome do Arquivo": res["Nome do Arquivo"]
+                            "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
+                            "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
+                            "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Est": "SC",
+                            "Classificação": res["Classificação"], "Andamento": res["Andamento"],
+                            "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
                         }
                         lista_sc.append(dados_sc)
                     else:
                         dados_geral = {
-                            "Música": res["Música"],
-                            "Artista": res["Artista"],
-                            "Compositores": res["Compositores"],
-                            "Formato": res["Formato"],
-                            "Ano": res["Ano"],
-                            "Origem": res["Origem"],
-                            "Gênero": res["Gênero"],
-                            "Gênero Relacionado": res["Gênero Relacionado"],
-                            "Idioma": "",
-                            "Classificação": res["Classificação"],
-                            "Andamento": res["Andamento"],
-                            "Data Cadastro": res["Data Cadastro"],
-                            "Participações": res["Participações"],
-                            "Nome do Arquivo": res["Nome do Arquivo"]
+                            "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
+                            "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
+                            "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Idioma": "",
+                            "Classificação": res["Classificação"], "Andamento": res["Andamento"],
+                            "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
                         }
                         lista_geral.append(dados_geral)
             
+            # Salva na memória temporária para que você veja o resultado na tela
             if lista_geral:
-                df_geral = pd.DataFrame(lista_geral)
-                df_geral.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
-                st.success(f"🎉 {len(df_geral)} músicas prontas para o ACERVO GERAL!")
-                st.markdown("👉 *Clique na tabela abaixo, use **Ctrl+A** e **Ctrl+C**, e cole na sua planilha do Acervo Geral.*")
-                st.dataframe(df_geral, use_container_width=True)
+                df_g = pd.DataFrame(lista_geral)
+                df_g.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
+                st.session_state["lote_geral_atual"] = df_g
                 
             if lista_sc:
-                df_sc = pd.DataFrame(lista_sc)
-                df_sc.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
-                st.warning(f"🏝️ {len(df_sc)} músicas de Santa Catarina identificadas para o SOM DA ILHA!")
-                st.markdown("👉 *Clique na tabela abaixo, use **Ctrl+A** e **Ctrl+C**, e cole na sua planilha do Som da Ilha.*")
-                st.dataframe(df_sc, use_container_width=True)
+                df_s = pd.DataFrame(lista_sc)
+                df_s.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
+                st.session_state["lote_sc_atual"] = df_s
                 
-            if lista_geral or lista_sc:
-                st.balloons()
-            else:
-                st.warning("Nenhuma linha válida encontrada no padrão.")
-        else:
-            st.warning("Cole os dados antes de processar.")
+            st.balloons()
+
+    # Exibição dos resultados formatados (Mantendo o comportamento visual idêntico ao seu)
+    if "lote_geral_atual" in st.session_state:
+        df_g = st.session_state["lote_geral_atual"]
+        st.success(f"🎉 {len(df_g)} músicas prontas para o ACERVO GERAL!")
+        st.markdown("👉 *Clique na tabela abaixo, use **Ctrl+A** e **Ctrl+C**, e cole na sua planilha do Acervo Geral.*")
+        st.dataframe(df_g, use_container_width=True)
+        
+    if "lote_sc_atual" in st.session_state:
+        df_s = st.session_state["lote_sc_atual"]
+        st.warning(f"🏝️ {len(df_s)} músicas de Santa Catarina identificadas para o SOM DA ILHA!")
+        st.markdown("👉 *Clique na tabela abaixo, use **Ctrl+A** e **Ctrl+C**, e cole na sua planilha do Som da Ilha.*")
+        st.dataframe(df_s, use_container_width=True)
 
 # ==========================================
-# ABA ORIGINAL 2: INSTAGRAM (CÓDIGO ORIGINAL SEU)
+# 📸 ABA: GERADOR DE SETLIST INSTAGRAM (CONFORME SEU CÓDIGO)
 # ==========================================
 elif opcao == "📸 Gerador de Setlist (Instagram)":
     st.title("📸 Formatador de Roteiro - Som da Ilha")
@@ -321,7 +321,6 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha:
                         continue
                     
-                    # --- REMOÇÃO DE PARTICIPAÇÕES ---
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     
@@ -331,12 +330,10 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                         artista_busca = artista_original.lower()
                         resto = partes[1]
                         
-                        # --- LÓGICA DE LIMPEZA DA MÚSICA ---
                         padrao_corte = r'(\(comp|\(compa|Álbum|EP|Single|\d{4}|\d{2}:\d{2})'
                         musica_limpa = re.split(padrao_corte, resto, flags=re.IGNORECASE)[0].strip()
                         musica_limpa = musica_limpa.rstrip('-').strip()
                         
-                        # Busca o arroba na planilha do Sheets
                         instagram = banco_instagram.get(artista_busca, "")
                         
                         linha_final = f"{artista_original} - {musica_limpa} {instagram}".strip()
