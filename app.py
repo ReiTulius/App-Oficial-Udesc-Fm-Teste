@@ -5,6 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+import datetime as dt # Importação necessária para o fuso horário
 
 # ==========================================
 # 📻 CONFIGURAÇÃO DO PAINEL & CONTA DE DISPARO
@@ -12,9 +13,8 @@ from datetime import datetime
 st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
 # 🔐 CONTA DO ROBÔ (Quem envia)
-# Configure aqui o e-mail central e a senha de app de 16 dígitos do Google
-EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
-SENHA_ROBO_REMETENTE = "emgknhatfefumxgi"
+EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
+SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
 
 # 📥 SEU E-MAIL (Quem recebe o relatório de quem cadastrou o lote)
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
@@ -37,16 +37,19 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         return
         
     try:
+        # 🕒 Correção do Fuso Horário para Horário de Brasília (UTC -3)
+        fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
+        agora_local = datetime.now(fuso_brasilia)
+        
         msg = MIMEMultipart()
         msg['From'] = f"Painel Udesc FM <{EMAIL_ROBO_REMETENTE}>"
         msg['To'] = EMAIL_DESTINATARIO_OFICIAL
-        
-        # O assunto já exibe direto na sua caixa de entrada quem realizou o cadastro
         msg['Subject'] = f"📻 Novo Cadastro por: {nome_usuario} ({nome_acervo})"
         
+        # 🎵 Formatação limpa usando o Nome do Arquivo Final (Coluna N)
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
-            linhas_musicas.append(f"• {linha['Artista']} - {linha['Música']} [{linha['Nome do Arquivo']}]")
+            linhas_musicas.append(f"• {linha['Nome do Arquivo']}.mp3")
         lista_texto = "\n".join(linhas_musicas)
         
         corpo = f"""Olá Túlio,
@@ -55,7 +58,7 @@ Um novo lote de músicas foi processado e armazenado no painel!
 
 👤 QUEM CADASTROU: {nome_usuario}
 📍 DESTINO DO LOTE: Planilha {nome_acervo}
-📅 DATA/HORA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+📅 DATA/HORA: {agora_local.strftime('%d/%m/%Y %H:%M:%S')}
 
 🎵 Músicas Processadas ({len(df_novas)} itens):
 {lista_texto}
@@ -178,7 +181,7 @@ def processar_linha_musica(linha_bruta):
     compositores = ""
     
     padrao_comp = r'\((comp\.|compa)[^)]+\)'
-    busca_comp = re.search(padrao_comp, linha_trabalho, flags=re.IGNORECASE)
+    busca_comp = re.search(padrao_comp, Secret_string := linha_trabalho, flags=re.IGNORECASE)
     
     if busca_comp:
         compositores_com_parentese = busca_comp.group(0)
@@ -218,11 +221,15 @@ def processar_linha_musica(linha_bruta):
     nome_arquivo_formatado = f"{artista}{part_str} - {musica}{comp_str}{formato_str}{ano_str}{sc_str}"
     nome_arquivo_formatado = re.sub(r'\s+', ' ', nome_arquivo_formatado).strip()
 
+    # 🕒 Fuso horário de Brasília para a data armazenada na tabela local
+    fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
+    data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
+
     return {
         "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
-        "Data Cadastro": datetime.now().strftime("%d/%m/%Y"), "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
+        "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
     }
 
 
@@ -389,11 +396,11 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
                     linha = linha.strip()
-                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
+                    if not linha or "Marcador" in linha or "Total:" in filename_sysrad := linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
-                        partes = linea_split = linha.split(" - ", 1)
+                        partes = linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
