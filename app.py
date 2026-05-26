@@ -12,7 +12,7 @@ from datetime import datetime
 st.set_page_config(page_title="Painel de Formatação Udesc FM", page_icon="📻", layout="wide")
 
 # 🔐 CONTA CENTRALIZADORA DE DISPARO (O Robô do App)
-# Coloque aqui um Gmail seu e a "Senha de App" de 16 dígitos dele para o robô funcionar
+# Substitua abaixo com o e-mail da rádio/seu e a "Senha de App" de 16 dígitos do Google
 EMAIL_ROBO_REMETENTE = "seu_email_central_do_robo@gmail.com"
 SENHA_ROBO_REMETENTE = "sua_senha_de_app_de_16_digitos"
 
@@ -30,7 +30,7 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 📧 FUNÇÃO COM IDENTIFICAÇÃO DINÂMICA DE QUEM CADASTROU
+# 📧 FUNÇÃO COM IDENTIFICAÇÃO DINÂMICA
 # ==========================================
 def enviar_notificacao_email(nome_acervo, df_novas, email_usuario):
     if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
@@ -40,11 +40,9 @@ def enviar_notificacao_email(nome_acervo, df_novas, email_usuario):
         msg = MIMEMultipart()
         msg['From'] = f"Painel Udesc FM <{EMAIL_ROBO_REMETENTE}>"
         msg['To'] = EMAIL_DESTINATARIO_OFICIAL
-        # Coloca o e-mail de quem cadastrou no Reply-To (se você responder, vai para a pessoa)
         msg['Reply-To'] = email_usuario
         msg['Subject'] = f"📻 Novo Cadastro no Acervo ({nome_acervo}) por: {email_usuario}"
         
-        # Lista as músicas enviadas
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
             linhas_musicas.append(f"• {linha['Artista']} - {linha['Música']} [{linha['Nome do Arquivo']}]")
@@ -75,7 +73,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         st.sidebar.error(f"Erro no envio do e-mail de alerta: {e}")
 
 # ==========================================
-# 🔄 LEITOR COMPLETO E ROBUSTO DE CADA PLANILHA
+# 🔄 LEITOR DAS PLANILHAS
 # ==========================================
 @st.cache_data(ttl=5)
 def carregar_planilha_especifica(nome_acervo):
@@ -115,7 +113,7 @@ def carregar_todos_os_acervos_reais():
 
 
 # ==========================================
-# FUNÇÕES DE SUPORTE DO GERADOR DE SETLIST (SEU CÓDIGO INTOCADO)
+# FUNÇÕES DO GERADOR DE SETLIST (INSTAGRAM)
 # ==========================================
 def converter_link_google(url):
     if "docs.google.com/spreadsheets" in url:
@@ -145,11 +143,11 @@ def carregar_banco_instagram(url):
 
 
 # ==========================================
-# FUNÇÕES DE SUPORTE DO FORMATADOR DE ACERVO (SEU CÓDIGO INTOCADO)
+# FUNÇÕES DO FORMATADOR DE ACERVO (CORRIGIDO)
 # ==========================================
 def processar_linha_musica(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
-    if not línea_original:
+    if not linha_original:  # CORRIGIDO AQUI (Estava línea_original)
         return None
         
     linha_limpa_fim = linha_original.lower()
@@ -220,7 +218,7 @@ def processar_linha_musica(linha_bruta):
     nome_arquivo_formatado = re.sub(r'\s+', ' ', nome_arquivo_formatado).strip()
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
+        "eh_sc": eh_sc, "Música": musica, "Artista": artist_name := artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": datetime.now().strftime("%d/%m/%Y"), "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
@@ -281,7 +279,7 @@ elif opcao == "📋 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + ENVIOS COM IDENTIFICAÇÃO DINÂMICA
+# 💿 ABA: FORMATADOR DE ACERVO
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Automatizador de Acervo Para Udesc FM")
@@ -382,7 +380,7 @@ elif opcao == "💿 Formatador de Acervo":
             st.rerun()
 
 # ==========================================
-# 📸 ABA: GERADOR DE SETLIST INSTAGRAM (CONFORME SEU CÓDIGO)
+# 📸 ABA: GERADOR DE SETLIST INSTAGRAM
 # ==========================================
 elif opcao == "📸 Gerador de Setlist (Instagram)":
     st.title("📸 Formatador de Roteiro - Som da Ilha")
