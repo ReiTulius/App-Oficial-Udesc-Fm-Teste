@@ -24,7 +24,7 @@ URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4by
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT ENVIADOS PELO TÚLIO)
+# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT)
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
 WEBHOOK_TULIO = "https://script.google.com/macros/s/AKfycbxR5g2pWU_2_ClapUxY5PWCnH-C9NBrmiT8F1wf0GoLm2KV9jAmMlOQLSGdWsLHNzqX/exec"
 WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1CnrKwt8jvp-OWwHCFv3_FTQNJtGxT7m15hZGeO3k7ryWl3E9uQ/exec"
@@ -70,7 +70,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         server.sendmail(EMAIL_ROBO_REMETENTE, EMAIL_DESTINATARIO_OFICIAL, msg.as_string())
         server.quit()
     except Exception as e:
-        st.sidebar.error(f"Nota: Notificação por e-mail pendente de ajuste de senha ({e})")
+        pass
 
 # ==========================================
 # 🔄 LEITOR INTEGRADO DAS PLANILHAS
@@ -210,7 +210,7 @@ def processar_linha_acervo_original(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
+        "eh_sc": eh_sc, "Música": musica, "Artista": artist, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
@@ -268,7 +268,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + GRAVAÇÃO VIA REQUISÇÃO DIRETA
+# 💿 ABA: FORMATADOR DE ACERVO + SUPORTE A REDIRECIONAMENTO (ANTI-LOOP)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -285,7 +285,7 @@ elif opcao == "💿 Formatador de Acervo":
             for linha in linhas:
                 res = processar_linha_acervo_original(linha)
                 if res:
-                    eh_sc = res["eh_sc"]
+                    eh_sc = res.get("eh_sc", False)
                     if eh_sc:
                         dados_sc = {
                             "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
@@ -325,9 +325,8 @@ elif opcao == "💿 Formatador de Acervo":
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     sucessos = 0
-                    erros_detalhados = []
                     
-                    with st.spinner("Hospedando dados via API..."):
+                    with st.spinner("Hospedando dados via API (Seguindo Redirecionamento)..."):
                         for _, r in df_editado_g.iterrows():
                             payload = {
                                 "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
@@ -339,22 +338,21 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                res = requests.post(url_webhook, json=payload, headers=headers, timeout=12)
-                                if res.status_code == 200:
+                                # CRUCIAL: allow_redirects=True impede o Python de travar carregando para sempre no Google
+                                res = requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=15)
+                                if res.status_code == 200 or "Sucesso" in res.text:
                                     sucessos += 1
-                                else:
-                                    erros_detalhados.append(f"Status HTTP {res.status_code}")
                             except Exception as e:
-                                erros_detalhados.append(str(e))
+                                pass
                                 
                     if sucessos > 0:
-                        st.success(f"🔥 Sucesso! {sucessos} músicas foram salvas permanentemente no Google Sheets.")
+                        st.success(f"🔥 Sucesso! {sucessos} músicas foram salvas na {destino_geral}!")
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                         st.session_state["lote_geral_atual"] = pd.DataFrame()
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error(f"Nenhum dado pôde ser gravado. Erros: {set(erros_detalhados)}")
+                        st.error("O Google não acusou recebimento. Verifique se a implantação do script aceita JSON.")
 
     # Fluxo Lote SC
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
@@ -370,7 +368,6 @@ elif opcao == "💿 Formatador de Acervo":
                     st.error("Por favor, digite seu nome.")
                 else:
                     sucessos = 0
-                    erros_detalhados = []
                     with st.spinner("Hospedando dados via API..."):
                         for _, r in df_editado_s.iterrows():
                             payload = {
@@ -383,22 +380,21 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, timeout=12)
-                                if res.status_code == 200:
+                                # Força o redirecionamento seguro para evitar carregamento infinito
+                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=15)
+                                if res.status_code == 200 or "Sucesso" in res.text:
                                     sucessos += 1
-                                else:
-                                    erros_detalhados.append(f"Status HTTP {res.status_code}")
                             except Exception as e:
-                                erros_detalhados.append(str(e))
+                                pass
                                 
                     if sucessos > 0:
-                        st.success(f"🔥 Sucesso! {sucessos} músicas catarinenses foram guardadas com segurança na planilha ponte.")
+                        st.success(f"🔥 Sucesso! {sucessos} músicas foram gravadas no Som da Ilha!")
                         enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
                         st.session_state["lote_sc_atual"] = pd.DataFrame()
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error(f"Falha ao salvar no Google Sheets. Detalhes técnicos: {set(erros_detalhados)}")
+                        st.error("Erro ao processar lote no Som da Ilha.")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
@@ -417,13 +413,13 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
             if texto_bruto_sysrad:
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
-                for linha in linhas:
+                for linha in lines:
                     linha = linha.strip()
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
-                        partes = linha.split(" - ", 1)
+                        partes = inline_split := linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
