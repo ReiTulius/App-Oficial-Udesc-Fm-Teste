@@ -24,7 +24,7 @@ URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4by
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT ENVIADOS PELO TÚLIO)
+# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT)
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
 WEBHOOK_TULIO = "https://script.google.com/macros/s/AKfycbxR5g2pWU_2_ClapUxY5PWCnH-C9NBrmiT8F1wf0GoLm2KV9jAmMlOQLSGdWsLHNzqX/exec"
 WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1CnrKwt8jvp-OWwHCFv3_FTQNJtGxT7m15hZGeO3k7ryWl3E9uQ/exec"
@@ -268,11 +268,11 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + GRAVAÇÃO REAL VIA WEBHOOKS
+# 💿 ABA: FORMATADOR DE ACERVO + GRAVAÇÃO VIA POST REQUISÇÃO DIRETA
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
-    st.markdown("Insira os títulos estruturados abaixo. Ao confirmar, o site usará as planilhas ponte seguras para armazenar.")
+    st.markdown("Insira os títulos estruturados abaixo. Ao confirmar, o site enviará os dados diretamente via API para as planilhas.")
 
     texto_bruto = st.text_area("Cole aqui as linhas do seu acervo:", height=150)
 
@@ -337,19 +337,21 @@ elif opcao == "💿 Formatador de Acervo":
                                 "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                             }
                             try:
-                                res = requests.post(url_webhook, json=payload, timeout=8)
-                                if res.status_code == 200 and "sucesso" in res.text:
+                                headers = {"Content-Type": "application/json"}
+                                res = requests.post(url_webhook, json=payload, headers=headers, timeout=10)
+                                if res.status_code == 200:
                                     sucessos += 1
-                            except:
+                            except Exception as e:
                                 pass
                                 
-                    if successes := sucessos:
-                        st.success(f"🔥 Sucesso! {successes} músicas foram salvas permanentemente no Google Sheets.")
+                    if sucessos > 0:
+                        st.success(f"🔥 Sucesso! {sucessos} músicas foram salvas permanentemente no Google Sheets.")
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                         st.session_state["lote_geral_atual"] = pd.DataFrame()
                         st.cache_data.clear()
+                        st.rerun()
                     else:
-                        st.error("Falha na comunicação com o Google. Verifique a implantação do Apps Script.")
+                        st.error("Nenhum dado pôde ser salvo. Certifique-se de que implementou o Apps Script como 'Qualquer pessoa'.")
 
     # Fluxo Lote SC (Som da Ilha Ponte)
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
@@ -376,19 +378,21 @@ elif opcao == "💿 Formatador de Acervo":
                                 "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                             }
                             try:
-                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, timeout=8)
-                                if res.status_code == 200 and "sucesso" in res.text:
+                                headers = {"Content-Type": "application/json"}
+                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, timeout=10)
+                                if res.status_code == 200:
                                     sucessos += 1
-                            except:
+                            except Exception as e:
                                 pass
                                 
-                    if successes := sucessos:
-                        st.success(f"🔥 Sucesso! {successes} músicas catarinenses foram guardadas com segurança na planilha ponte.")
+                    if sucessos > 0:
+                        st.success(f"🔥 Sucesso! {sucessos} músicas catarinenses foram guardadas com segurança na planilha ponte.")
                         enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
                         st.session_state["lote_sc_atual"] = pd.DataFrame()
                         st.cache_data.clear()
+                        st.rerun()
                     else:
-                        st.error("Falha técnica ao gravar no Google Sheets. Confira o Apps Script.")
+                        st.error("Falha técnica ao gravar no Google Sheets. Verifique a implantação do Apps Script.")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
@@ -409,7 +413,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
                     linha = linha.strip()
-                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in inline_line: continue
+                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
