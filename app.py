@@ -153,7 +153,7 @@ def processar_linha_acervo_original(linha_bruta):
         eh_sc = True
         linha_original = re.sub(r'\s*-\s*sc\s*$', '', linha_original, flags=re.IGNORECASE).strip()
         
-    if "\\" in linha_original:
+    if "\\" in inline_line := linha_original:
         linha_trabalho = linha_original.split("\\")[-1]
     else:
         linha_trabalho = linha_original
@@ -268,7 +268,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + GRAVAÇÃO VIA POST REQUISÇÃO DIRETA
+# 💿 ABA: FORMATADOR DE ACERVO + DEBUGGER DE RESPOSTA
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -309,7 +309,7 @@ elif opcao == "💿 Formatador de Acervo":
             if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
             st.balloons()
 
-    # Fluxo Lote Geral (Túlio Ponte / Jéssica)
+    # Lote Geral
     if "lote_geral_atual" in st.session_state and not st.session_state["lote_geral_atual"].empty:
         st.success("🎉 Lote GERAL formatado com sucesso:")
         df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="edit_g_real")
@@ -325,6 +325,7 @@ elif opcao == "💿 Formatador de Acervo":
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     sucessos = 0
+                    erros_detalhados = []
                     
                     with st.spinner("Hospedando dados via API..."):
                         for _, r in df_editado_g.iterrows():
@@ -338,11 +339,13 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                res = requests.post(url_webhook, json=payload, headers=headers, timeout=10)
+                                res = requests.post(url_webhook, json=payload, headers=headers, timeout=12)
                                 if res.status_code == 200:
                                     sucessos += 1
+                                else:
+                                    erros_detalhados.append(f"Código HTTP {res.status_code}")
                             except Exception as e:
-                                pass
+                                erros_detalhados.append(str(e))
                                 
                     if sucessos > 0:
                         st.success(f"🔥 Sucesso! {sucessos} músicas foram salvas permanentemente no Google Sheets.")
@@ -351,9 +354,9 @@ elif opcao == "💿 Formatador de Acervo":
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Nenhum dado pôde ser salvo. Certifique-se de que implementou o Apps Script como 'Qualquer pessoa'.")
+                        st.error(f"Nenhum dado pôde ser salvo. Erros detectados: {set(erros_detalhados)}")
 
-    # Fluxo Lote SC (Som da Ilha Ponte)
+    # Lote SC
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
         st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
         df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="edit_s_real")
@@ -367,6 +370,7 @@ elif opcao == "💿 Formatador de Acervo":
                     st.error("Por favor, digite seu nome.")
                 else:
                     sucessos = 0
+                    erros_detalhados = []
                     with st.spinner("Hospedando dados via API..."):
                         for _, r in df_editado_s.iterrows():
                             payload = {
@@ -379,11 +383,13 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, timeout=10)
+                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, timeout=12)
                                 if res.status_code == 200:
                                     sucessos += 1
+                                else:
+                                    erros_detalhados.append(f"Código HTTP {res.status_code}")
                             except Exception as e:
-                                pass
+                                erros_detalhados.append(str(e))
                                 
                     if sucessos > 0:
                         st.success(f"🔥 Sucesso! {sucessos} músicas catarinenses foram guardadas com segurança na planilha ponte.")
@@ -392,7 +398,7 @@ elif opcao == "💿 Formatador de Acervo":
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Falha técnica ao gravar no Google Sheets. Verifique a implantação do Apps Script.")
+                        st.error(f"Falha técnica ao gravar no Google Sheets. Detalhes: {set(erros_detalhados)}")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
