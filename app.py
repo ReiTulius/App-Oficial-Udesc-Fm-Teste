@@ -24,7 +24,7 @@ URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4by
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT)
+# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT ENVIADOS PELO TÚLIO)
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
 WEBHOOK_TULIO = "https://script.google.com/macros/s/AKfycbxR5g2pWU_2_ClapUxY5PWCnH-C9NBrmiT8F1wf0GoLm2KV9jAmMlOQLSGdWsLHNzqX/exec"
 WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1CnrKwt8jvp-OWwHCFv3_FTQNJtGxT7m15hZGeO3k7ryWl3E9uQ/exec"
@@ -70,7 +70,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         server.sendmail(EMAIL_ROBO_REMETENTE, EMAIL_DESTINATARIO_OFICIAL, msg.as_string())
         server.quit()
     except Exception as e:
-        st.sidebar.error(f"Erro ao disparar e-mail de alerta: {e}")
+        st.sidebar.error(f"Nota: Notificação por e-mail pendente de ajuste de senha ({e})")
 
 # ==========================================
 # 🔄 LEITOR INTEGRADO DAS PLANILHAS
@@ -153,7 +153,7 @@ def processar_linha_acervo_original(linha_bruta):
         eh_sc = True
         linha_original = re.sub(r'\s*-\s*sc\s*$', '', linha_original, flags=re.IGNORECASE).strip()
         
-    if "\\" in inline_line := linha_original:
+    if "\\" in linha_original:
         linha_trabalho = linha_original.split("\\")[-1]
     else:
         linha_trabalho = linha_original
@@ -268,7 +268,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + DEBUGGER DE RESPOSTA
+# 💿 ABA: FORMATADOR DE ACERVO + GRAVAÇÃO VIA REQUISÇÃO DIRETA
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -285,7 +285,7 @@ elif opcao == "💿 Formatador de Acervo":
             for linha in linhas:
                 res = processar_linha_acervo_original(linha)
                 if res:
-                    eh_sc = res.pop("eh_sc")
+                    eh_sc = res["eh_sc"]
                     if eh_sc:
                         dados_sc = {
                             "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
@@ -309,7 +309,7 @@ elif opcao == "💿 Formatador de Acervo":
             if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
             st.balloons()
 
-    # Lote Geral
+    # Fluxo Lote Geral
     if "lote_geral_atual" in st.session_state and not st.session_state["lote_geral_atual"].empty:
         st.success("🎉 Lote GERAL formatado com sucesso:")
         df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="edit_g_real")
@@ -343,7 +343,7 @@ elif opcao == "💿 Formatador de Acervo":
                                 if res.status_code == 200:
                                     sucessos += 1
                                 else:
-                                    erros_detalhados.append(f"Código HTTP {res.status_code}")
+                                    erros_detalhados.append(f"Status HTTP {res.status_code}")
                             except Exception as e:
                                 erros_detalhados.append(str(e))
                                 
@@ -354,9 +354,9 @@ elif opcao == "💿 Formatador de Acervo":
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error(f"Nenhum dado pôde ser salvo. Erros detectados: {set(erros_detalhados)}")
+                        st.error(f"Nenhum dado pôde ser gravado. Erros: {set(erros_detalhados)}")
 
-    # Lote SC
+    # Fluxo Lote SC
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
         st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
         df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="edit_s_real")
@@ -387,7 +387,7 @@ elif opcao == "💿 Formatador de Acervo":
                                 if res.status_code == 200:
                                     sucessos += 1
                                 else:
-                                    erros_detalhados.append(f"Código HTTP {res.status_code}")
+                                    erros_detalhados.append(f"Status HTTP {res.status_code}")
                             except Exception as e:
                                 erros_detalhados.append(str(e))
                                 
@@ -398,7 +398,7 @@ elif opcao == "💿 Formatador de Acervo":
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error(f"Falha técnica ao gravar no Google Sheets. Detalhes: {set(erros_detalhados)}")
+                        st.error(f"Falha ao salvar no Google Sheets. Detalhes técnicos: {set(erros_detalhados)}")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
@@ -432,7 +432,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                         instagram = banco_instagram.get(artista_busca, "")
                         linha_final = f"{artista_original} - {musica_limpa} {instagram}".strip()
                         resultado.append(linha_final)
-                texto_formatado = "\n".join(resultado)
+                texto_formatated = "\n".join(resultado)
                 st.subheader("📋 Roteiro Pronto para as Redes Sociais:")
-                st.text_area("Selecione tudo e copie:", value=texto_formatado, height=350)
+                st.text_area("Selecione tudo e copie:", value=texto_formatated, height=350)
                 st.balloons()
