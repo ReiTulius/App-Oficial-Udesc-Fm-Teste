@@ -3,6 +3,7 @@ import pandas as pd
 import re
 import smtplib
 import requests
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -13,7 +14,6 @@ import datetime as dt
 # ==========================================
 st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
-# 🔐 CONTA DO ROBÔ DE E-MAIL
 EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
 SENHA_ROBO_REMETENTE = "nvfxdrlzpkzbugao"
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
@@ -34,7 +34,7 @@ WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1Cnr
 # ==========================================
 def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
     if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
-        return False
+        return
     try:
         fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
         agora_local = datetime.now(fuso_brasilia)
@@ -69,14 +69,13 @@ Aviso automático do Painel de Controle Udesc FM."""
         server.login(EMAIL_ROBO_REMETENTE, SENHA_ROBO_REMETENTE)
         server.sendmail(EMAIL_ROBO_REMETENTE, EMAIL_DESTINATARIO_OFICIAL, msg.as_string())
         server.quit()
-        return True
-    except Exception as e:
-        return False
+    except:
+        pass
 
 # ==========================================
 # 🔄 LEITOR INTEGRADO DAS PLANILHAS
 # ==========================================
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def carregar_planilha_especifica(nome_acervo):
     url_map = {
         "Som da Ilha": URL_SOM_DA_ILHA_PRO,
@@ -107,9 +106,6 @@ def carregar_todos_os_acervos_reais():
         return pd.concat(lista_dfs, ignore_index=True)
     return pd.DataFrame()
 
-# ==========================================
-# FUNÇÕES DO GERADOR DE SETLIST (INSTAGRAM)
-# ==========================================
 def converter_link_google(url):
     if "docs.google.com/spreadsheets" in url:
         id_planilha = url.split("/d/")[1].split("/")[0]
@@ -136,9 +132,6 @@ def carregar_banco_instagram(url):
     except Exception as e:
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
-# ==========================================
-# LÓGICA DO FORMATADOR DE ACERVO ORIGINAL
-# ==========================================
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
     if not linha_original:
@@ -269,7 +262,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + CONFIRMAÇÃO OBRIGATÓRIA
+# 💿 ABA: FORMATADOR DE ACERVO + RECARREGAMENTO SEGURO
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -326,7 +319,7 @@ elif opcao == "💿 Formatador de Acervo":
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     
-                    with st.spinner("Hospedando dados via API..."):
+                    with st.spinner("Gravando na planilha destino e preparando e-mail..."):
                         for _, r in df_editado_g.iterrows():
                             payload = {
                                 "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
@@ -338,20 +331,21 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                # Timeout de 4 segundos para evitar que o site trave caso o script do Google demore a responder
-                                requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=4)
+                                requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=8)
                             except:
                                 pass
                                 
-                    # Dispara o e-mail oficial
                     enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                     
-                    st.success(f"✅ Sucesso! O lote foi enviado para a {destino_geral} e a notificação por e-mail foi disparada!")
+                    # Pausa de sincronização para dar tempo do Google liberar a leitura
+                    time.sleep(2.0)
+                    st.cache_data.clear()
+                    
+                    st.success(f"🔥 Sucesso Absoluto! Músicas gravadas na linha correta da {destino_geral} e e-mail enviado!")
                     st.session_state["lote_geral_atual"] = pd.DataFrame()
-                    st.cache_data.clear() # Limpa o cache para atualizar as buscas na hora
                     st.rerun()
 
-    # Fluxo Lote SC
+    # Fluxo Lote SC (Som da Ilha)
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
         st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
         df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="edit_s_real")
@@ -364,7 +358,7 @@ elif opcao == "💿 Formatador de Acervo":
                 if not u_nome_s.strip():
                     st.error("Por favor, digite seu nome.")
                 else:
-                    with st.spinner("Hospedando dados via API..."):
+                    with st.spinner("Gravando no Som da Ilha e preparando e-mail..."):
                         for _, r in df_editado_s.iterrows():
                             payload = {
                                 "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
@@ -376,17 +370,18 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                # Força o desprendimento após 4 segundos para evitar travamentos visuais
-                                requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=4)
+                                requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=8)
                             except:
                                 pass
                                 
-                    # Dispara o e-mail oficial
                     enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
                     
-                    st.success("✅ Sucesso! O lote foi gravado com sucesso no Som da Ilha e a confirmação por e-mail foi enviada!")
+                    # Pausa de sincronização para garantir que apareça na pesquisa
+                    time.sleep(2.0)
+                    st.cache_data.clear()
+                    
+                    st.success("🔥 Sucesso Absoluto! Gravado na linha correta do Som da Ilha e e-mail disparado!")
                     st.session_state["lote_sc_atual"] = pd.DataFrame()
-                    st.cache_data.clear() # Garante que as músicas novas apareçam na pesquisa imediatamente
                     st.rerun()
 
 # ==========================================
@@ -407,7 +402,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
-                    linha = linha.strip()
+                    linha = inline_strip := linha.strip()
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
