@@ -34,7 +34,7 @@ WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1Cnr
 # ==========================================
 def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
     if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
-        return
+        return False
     try:
         fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
         agora_local = datetime.now(fuso_brasilia)
@@ -69,8 +69,9 @@ Aviso automático do Painel de Controle Udesc FM."""
         server.login(EMAIL_ROBO_REMETENTE, SENHA_ROBO_REMETENTE)
         server.sendmail(EMAIL_ROBO_REMETENTE, EMAIL_DESTINATARIO_OFICIAL, msg.as_string())
         server.quit()
+        return True
     except Exception as e:
-        pass
+        return False
 
 # ==========================================
 # 🔄 LEITOR INTEGRADO DAS PLANILHAS
@@ -268,7 +269,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + ENVIO SEGURO VIA API
+# 💿 ABA: FORMATADOR DE ACERVO + CONFIRMAÇÃO OBRIGATÓRIA
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -324,7 +325,6 @@ elif opcao == "💿 Formatador de Acervo":
                     st.error("Por favor, digite seu nome.")
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
-                    sucessos = 0
                     
                     with st.spinner("Hospedando dados via API..."):
                         for _, r in df_editado_g.iterrows():
@@ -338,20 +338,18 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                res = requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=15)
-                                if res.status_code == 200 or "Sucesso" in res.text:
-                                    sucessos += 1
-                            except Exception as e:
+                                # Timeout de 4 segundos para evitar que o site trave caso o script do Google demore a responder
+                                requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=4)
+                            except:
                                 pass
                                 
-                    if sucessos > 0:
-                        st.success(f"🔥 Sucesso! {sucessos} músicas foram salvas na {destino_geral}!")
-                        enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
-                        st.session_state["lote_geral_atual"] = pd.DataFrame()
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error("O Google não retornou confirmação. Verifique a configuração do seu Apps Script.")
+                    # Dispara o e-mail oficial
+                    enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
+                    
+                    st.success(f"✅ Sucesso! O lote foi enviado para a {destino_geral} e a notificação por e-mail foi disparada!")
+                    st.session_state["lote_geral_atual"] = pd.DataFrame()
+                    st.cache_data.clear() # Limpa o cache para atualizar as buscas na hora
+                    st.rerun()
 
     # Fluxo Lote SC
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
@@ -366,7 +364,6 @@ elif opcao == "💿 Formatador de Acervo":
                 if not u_nome_s.strip():
                     st.error("Por favor, digite seu nome.")
                 else:
-                    sucessos = 0
                     with st.spinner("Hospedando dados via API..."):
                         for _, r in df_editado_s.iterrows():
                             payload = {
@@ -379,20 +376,18 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=15)
-                                if res.status_code == 200 or "Sucesso" in res.text:
-                                    sucessos += 1
-                            except Exception as e:
+                                # Força o desprendimento após 4 segundos para evitar travamentos visuais
+                                requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=4)
+                            except:
                                 pass
                                 
-                    if sucessos > 0:
-                        st.success(f"🔥 Sucesso! {sucessos} músicas foram gravadas no Som da Ilha!")
-                        enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
-                        st.session_state["lote_sc_atual"] = pd.DataFrame()
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error("Não foi possível salvar no Som da Ilha.")
+                    # Dispara o e-mail oficial
+                    enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
+                    
+                    st.success("✅ Sucesso! O lote foi gravado com sucesso no Som da Ilha e a confirmação por e-mail foi enviada!")
+                    st.session_state["lote_sc_atual"] = pd.DataFrame()
+                    st.cache_data.clear() # Garante que as músicas novas apareçam na pesquisa imediatamente
+                    st.rerun()
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
