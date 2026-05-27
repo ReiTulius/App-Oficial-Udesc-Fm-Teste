@@ -82,21 +82,28 @@ Aviso automático do Painel de Controle Udesc FM."""
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
     try:
-        df = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip', encoding='utf-8')
-        if df.empty:
-            df = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip', encoding='latin1')
+        # Força o separador por vírgula que é o padrão do export do Google Sheets
+        df = pd.read_csv(url, sep=',', on_bad_lines='skip', encoding='utf-8')
         if not df.empty:
             df.dropna(how='all', inplace=True)
             df.columns = [str(c).strip() for c in df.columns]
             df["Acervo Origem"] = nome_acervo
             return df
     except:
-        pass
+        try:
+            df = pd.read_csv(url, sep=',', on_bad_lines='skip', encoding='latin1')
+            if not df.empty:
+                df.dropna(how='all', inplace=True)
+                df.columns = [str(c).strip() for c in df.columns]
+                df["Acervo Origem"] = nome_acervo
+                return df
+        except:
+            pass
     return pd.DataFrame()
 
 def inicializar_acervos(forcar_recarga=False):
     if "banco_completo" not in st.session_state or forcar_recarga:
-        with st.spinner("Sincronizando acervos completos..."):
+        with st.spinner("Sincronizando acervos completos (Originais + Cópias)..."):
             df_som_pro = puxar_dados_do_google(URL_SOM_DA_ILHA_PRO, "Som da Ilha")
             df_tulio_pro = puxar_dados_do_google(URL_TULIO_PRO, "Túlio")
             df_jessica_pro = puxar_dados_do_google(URL_JESSICA_PRO, "Jéssica")
@@ -111,20 +118,22 @@ def inicializar_acervos(forcar_recarga=False):
             if dfs:
                 df_unificado = pd.concat(dfs, ignore_index=True)
                 
-                # Se alguma planilha não tiver "Nome do Arquivo", preenche temporariamente com "Artista - Música" para a busca funcionar!
+                # Garante que a coluna Nome do Arquivo exista e esteja preenchida
                 if "Nome do Arquivo" not in df_unificado.columns:
                     df_unificado["Nome do Arquivo"] = ""
                 
+                # Preenche vazios de forma segura caso falte em algum registro antigo
                 mask_vazio = df_unificado["Nome do Arquivo"].astype(str).str.strip() == ""
                 if "Artista" in df_unificado.columns and "Música" in df_unificado.columns:
                     df_unificado.loc[mask_vazio, "Nome do Arquivo"] = df_unificado["Artista"].astype(str) + " - " + df_unificado["Música"].astype(str)
                 
-                # Remove duplicadas de forma segura
-                df_unificado.drop_duplicates(subset=["Música", "Artista"], keep="first", inplace=True)
+                # Remove duplicadas exatas de linha para não sumir com músicas parecidas
+                df_unificado.drop_duplicates(keep="first", inplace=True)
                 st.session_state["banco_completo"] = df_unificado
             else:
                 st.session_state["banco_completo"] = pd.DataFrame()
 
+# Inicializa o banco ao abrir o app
 inicializar_acervos()
 
 def converter_link_google(url):
@@ -137,7 +146,7 @@ def converter_link_google(url):
 def carregar_banco_instagram(url):
     try:
         url_direta = converter_link_google(url)
-        df = pd.read_csv(url_direta)
+        df = pd.read_csv(url_direta, sep=',')
         df.columns = [str(c).strip().lower() for c in df.columns]
         col_artista = df.columns[0]
         col_insta = df.columns[1]
@@ -225,10 +234,11 @@ def processar_linha_acervo_original(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
+        "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
-        "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
+        "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado,
+        "eh_sc": eh_sc
     }
 
 # --- INTERFACE DE NAVEGAÇÃO ---
@@ -291,7 +301,7 @@ elif opcao == "📂 Ver Todo o Acervo":
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
-    st.markdown("Insira os títulos estruturados abaixo.")
+    st.markdown("Insira os títulos estruturados abaixo para enviar diretamente para as planilhas cópias.")
 
     texto_bruto = st.text_area("Cole aqui as linhas do seu acervo:", height=150)
 
@@ -304,7 +314,9 @@ elif opcao == "💿 Formatador de Acervo":
             for linha in linhas:
                 res = processar_linha_acervo_original(linha)
                 if res:
-                    if res.get("eh_sc", False):
+                    # Remove o campo auxiliar antes de jogar na tabela/enviar pro webhook
+                    eh_sc = res.pop("eh_sc", False)
+                    if eh_sc:
                         lista_sc.append(res)
                     else:
                         lista_geral.append(res)
@@ -341,7 +353,9 @@ elif opcao == "💿 Formatador de Acervo":
                                 "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                             }
                             try:
-                                requests.post(url_webhook, json=payload, headers={"Content-Type": "application/json"}, allow_redirects=True, timeout=10)
+                                r_post = requests.post(url_webhook, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+                                if r_post.status_code != 200:
+                                    com_sucesso = False
                             except:
                                 com_sucesso = False
                     
@@ -379,7 +393,9 @@ elif opcao == "💿 Formatador de Acervo":
                                 "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                             }
                             try:
-                                requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers={"Content-Type": "application/json"}, allow_redirects=True, timeout=10)
+                                r_post = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+                                if r_post.status_code != 200:
+                                    com_sucesso_s = False
                             except:
                                 com_sucesso_s = False
                                 
@@ -409,7 +425,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
             if texto_bruto_sysrad:
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
-                for linha in lines:
+                for linha in linhas:
                     linha = linha.strip()
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha:
                         continue
