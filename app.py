@@ -23,12 +23,12 @@ URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4by
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-# 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS (DO APP - TOTALMENTE INTEGRADOS!)
+# 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS (DO APP)
 URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIzsCgNo/export?format=csv"
 URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/export?format=csv"
 URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/export?format=csv"
 
-# 🚀 WEBHOOKS DE ESCRITA (GERENCIADOS PELAS PLANILHAS CÓPIAS)
+# 🚀 WEBHOOKS DE ESCRITA
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
 WEBHOOK_TULIO = "https://script.google.com/macros/s/AKfycbxR5g2pWU_2_ClapUxY5PWCnH-C9NBrmiT8F1wf0GoLm2KV9jAmMlOQLSGdWsLHNzqX/exec"
 WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1CnrKwt8jvp-OWwHCFv3_FTQNJtGxT7m15hZGeO3k7ryWl3E9uQ/exec"
@@ -50,7 +50,8 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
-            linhas_musicas.append(f"• {linha['Nome do Arquivo']}.mp3")
+            nome_arq = linha.get('Nome do Arquivo', linha.get('Música', 'Sem Nome'))
+            linhas_musicas.append(f"• {nome_arq}.mp3")
         lista_texto = "\n".join(linhas_musicas)
         
         corpo = f"""Olá Túlio,
@@ -95,13 +96,11 @@ def puxar_dados_do_google(url, nome_acervo):
 
 def inicializar_acervos(forcar_recarga=False):
     if "banco_completo" not in st.session_state or forcar_recarga:
-        with st.spinner("Sincronizando acervos completos (Originais + Cópias App)..."):
-            # Puxa das Planilhas Originais Pro
+        with st.spinner("Sincronizando acervos completos..."):
             df_som_pro = puxar_dados_do_google(URL_SOM_DA_ILHA_PRO, "Som da Ilha")
             df_tulio_pro = puxar_dados_do_google(URL_TULIO_PRO, "Túlio")
             df_jessica_pro = puxar_dados_do_google(URL_JESSICA_PRO, "Jéssica")
             
-            # Puxa das Planilhas Cópias (Novos cadastros rápidos)
             df_som_app = puxar_dados_do_google(URL_SOM_DA_ILHA_APP_CSV, "Som da Ilha")
             df_tulio_app = puxar_dados_do_google(URL_TULIO_APP_CSV, "Túlio")
             df_jessica_app = puxar_dados_do_google(URL_JESSICA_APP_CSV, "Jéssica")
@@ -111,9 +110,17 @@ def inicializar_acervos(forcar_recarga=False):
             
             if dfs:
                 df_unificado = pd.concat(dfs, ignore_index=True)
-                # Remove duplicadas caso uma música já tenha sido migrada para a pro
-                if "Nome do Arquivo" in df_unificado.columns:
-                    df_unificado.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
+                
+                # Se alguma planilha não tiver "Nome do Arquivo", preenche temporariamente com "Artista - Música" para a busca funcionar!
+                if "Nome do Arquivo" not in df_unificado.columns:
+                    df_unificado["Nome do Arquivo"] = ""
+                
+                mask_vazio = df_unificado["Nome do Arquivo"].astype(str).str.strip() == ""
+                if "Artista" in df_unificado.columns and "Música" in df_unificado.columns:
+                    df_unificado.loc[mask_vazio, "Nome do Arquivo"] = df_unificado["Artista"].astype(str) + " - " + df_unificado["Música"].astype(str)
+                
+                # Remove duplicadas de forma segura
+                df_unificado.drop_duplicates(subset=["Música", "Artista"], keep="first", inplace=True)
                 st.session_state["banco_completo"] = df_unificado
             else:
                 st.session_state["banco_completo"] = pd.DataFrame()
@@ -174,7 +181,7 @@ def processar_linha_acervo_original(linha_bruta):
     compositores = ""
     
     padrao_comp = r'\((comp\.|compa)[^)]+\)'
-    busca_comp = re.search(padrao_comp, Self_linha_trabalho if 'Self_linha_trabalho' in locals() else linha_trabalho, flags=re.IGNORECASE)
+    busca_comp = re.search(padrao_comp, linha_trabalho, flags=re.IGNORECASE)
     if busca_comp:
         compositores_com_parentese = busca_comp.group(0)
         compositores = re.sub(r'\((comp\.|compa)\s*', '', compositores_com_parentese, flags=re.IGNORECASE).rstrip(')')
@@ -284,7 +291,7 @@ elif opcao == "📂 Ver Todo o Acervo":
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
-    st.markdown("Insira os títulos estruturados abaixo. O salvamento nas planilhas de App foi corrigido.")
+    st.markdown("Insira os títulos estruturados abaixo.")
 
     texto_bruto = st.text_area("Cole aqui as linhas do seu acervo:", height=150)
 
@@ -294,27 +301,13 @@ elif opcao == "💿 Formatador de Acervo":
             lista_geral = []
             lista_sc = []
             
-            for linha in list(linhas):
+            for linha in linhas:
                 res = processar_linha_acervo_original(linha)
                 if res:
                     if res.get("eh_sc", False):
-                        dados_sc = {
-                            "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
-                            "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
-                            "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Est/Idioma": "SC",
-                            "Classificação": res["Classificação"], "Andamento": res["Andamento"],
-                            "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
-                        }
-                        lista_sc.append(dados_sc)
+                        lista_sc.append(res)
                     else:
-                        dados_geral = {
-                            "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
-                            "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
-                            "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Est/Idioma": "",
-                            "Classificação": res["Classificação"], "Andamento": res["Andamento"],
-                            "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
-                        }
-                        lista_geral.append(dados_geral)
+                        lista_geral.append(res)
             
             if lista_geral: st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral)
             if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
@@ -416,7 +409,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
             if texto_bruto_sysrad:
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
-                for linha in linhas:
+                for linha in lines:
                     linha = linha.strip()
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha:
                         continue
