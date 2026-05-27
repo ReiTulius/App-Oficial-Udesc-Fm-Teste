@@ -3,7 +3,6 @@ import pandas as pd
 import re
 import smtplib
 import requests
-from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -32,48 +31,49 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 🌐 INTEL-SEARCH: SPOTIFY & GENIUS SCRAPER (SEM API KEY)
+# 🌐 INTEL-SEARCH: MUSICBRAINZ & GENIUS API (SEM INFRAESTRUTURA EXTRA)
 # ==========================================
 def buscar_dados_musica_na_internet(termo_busca):
-    """Busca o ano no Spotify via scraping e compositores na API pública do Genius"""
+    """Busca o ano no MusicBrainz e compositores na API pública do Genius de forma limpa"""
     ano_descoberto = ""
     compositores_descobertos = ""
     
-    # Limpeza básica de tags de download comuns para não poluir a busca na web
-    termo_limpo = re.sub(r'(spotidown\.app|y2mate|youtube|download|mp3|-\s*sc$)', '', termo_busca, flags=re.IGNORECASE).strip()
+    # Limpeza de lixos eletrônicos de download para refinar a pesquisa
+    termo_limpo = re.sub(r'(spotidown\.app|y2mate\.com|y2mate|youtube|download|mp3|-\s*sc$)', '', termo_busca, flags=re.IGNORECASE).strip()
     termo_limpo = re.sub(r'^\s*-\s*|\s*-\s*$', '', termo_limpo).strip()
     
     if not termo_limpo:
         return "", ""
 
-    # 1. TENTATIVA: Buscar Ano de Lançamento no Spotify (Via Busca Aberta)
+    # 1. BUSCA DE ANO NO MUSICBRAINZ (API Aberta JSON)
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        url_spotify = f"https://open.spotify.com/search/{requests.utils.quote(termo_limpo)}"
-        resposta = requests.get(url_spotify, headers=headers, timeout=5)
-        if resposta.status_code == 200:
-            # Procura por padrões de 4 dígitos (anos entre 1950 e 2028) na resposta da página
-            anos_encontrados = re.findall(r'\b(19[5-9]\d|20[0-2]\d)\b', resposta.text)
-            if anos_encontrados:
-                ano_descoberto = anos_encontrados[0]
+        url_mb = f"https://musicbrainz.org/ws/2/recording/?query={requests.utils.quote(termo_limpo)}&fmt=json"
+        headers_mb = {"User-Agent": "UdescFMAcervoBot/1.0 (heytuliusmusic@gmail.com)"}
+        res_mb = requests.get(url_mb, headers=headers_mb, timeout=4).json()
+        
+        recordings = res_mb.get("recordings", [])
+        if recordings:
+            # Pega a primeira ocorrência que contenha uma data válida de lançamento
+            for rec in recordings[:3]:
+                manuf_date = rec.get("first-release-date", "")
+                if manuf_date and len(manuf_date) >= 4:
+                    ano_descoberto = manuf_date[:4]
+                    break
     except:
         pass
 
-    # 2. TENTATIVA: Buscar Compositores no Genius (Usando a API aberta de busca deles)
+    # 2. BUSCA DE COMPOSITORES NO GENIUS (API Aberta JSON)
     try:
         url_genius = f"https://api.genius.com/search?q={requests.utils.quote(termo_limpo)}"
-        # Token público alternativo para consultas simples de busca do Genius
         headers_genius = {"Authorization": "Bearer 8Ym7_m7Y-M3v7vXz8VpZmXg1_N6g8O-k_9xN2Vb5v_M6b7vX_z8VpZ"}
-        res_genius = requests.get(url_genius, headers=headers_genius, timeout=5).json()
+        res_genius = requests.get(url_genius, headers=headers_genius, timeout=4).json()
         
         hits = res_genius.get("response", {}).get("hits", [])
         if hits:
-            # Pega o ID da primeira música correspondente encontrada
             song_id = hits[0]["result"]["id"]
             url_song = f"https://api.genius.com/songs/{song_id}"
-            res_song = requests.get(url_song, headers=headers_genius, timeout=5).json()
+            res_song = requests.get(url_song, headers=headers_genius, timeout=4).json()
             
-            # Procura no grupo de escritores/compositores (writer_artists)
             writers = res_song.get("response", {}).get("song", {}).get("writer_artists", [])
             if writers:
                 compositores_com_nome = [w["name"] for w in writers]
@@ -206,7 +206,7 @@ def processar_linha_musica(linha_bruta):
     if not linha_original:
         return None
         
-    # 🧼 REMOVE SUJEIRAS E TAGS DE SITES DE DOWNLOAD AUTOMATICAMENTE
+    # Limpa as tags mais comuns de scrapers de áudio
     linha_original = re.sub(r'(spotidown\.app\s*-\s*|y2mate\.com\s*-\s*|y2mate\s*|download\s*)', '', linha_original, flags=re.IGNORECASE)
     
     linha_limpa_fim = linha_original.lower()
@@ -224,7 +224,6 @@ def processar_linha_musica(linha_bruta):
     else:
         linha_trabalho = linha_original
 
-    # Inicia variáveis
     artista = ""
     participacao = ""
     musica = ""
@@ -232,7 +231,6 @@ def processar_linha_musica(linha_bruta):
     ano = ""
     compositores = ""
     
-    # Captura compositores manuais se já existirem no texto colado entre parênteses
     padrao_comp = r'\((comp\.|compa)[^)]+\)'
     busca_comp = re.search(padrao_comp, linha_trabalho, flags=re.IGNORECASE)
     if busca_comp:
@@ -240,7 +238,6 @@ def processar_linha_musica(linha_bruta):
         compositores = re.sub(r'\((comp\.|compa)\s*', '', compositores_com_parentese, flags=re.IGNORECASE).rstrip(')')
         linha_trabalho = linha_trabalho.replace(compositores_com_parentese, "").replace("  ", " ")
 
-    # Quebra a linha para tentar identificar artista e música estruturados
     partes = [p.strip() for p in linha_trabalho.split(" - ")]
     
     if len(partes) >= 2:
@@ -264,11 +261,10 @@ def processar_linha_musica(linha_bruta):
         if len(partes) > indice_atual and partes[-1].isdigit():
             ano = partes[-1]
     else:
-        # Se veio jogado (ex: "última roupa"), assume como o nome da música para pesquisar
         musica = linha_trabalho
         artista = "Desconhecido"
 
-    # 🌐 CHAMA A INTELIGÊNCIA DA INTERNET SE O ANO OU COMPOSITORES ESTIVEREM EM BRANCO
+    # 🌐 CHAMA A CONSULTA DA INTERNET SE FALTAR DADOS CRUCIAIS
     if not ano or not compositores:
         termo_pesquisa = f"{artista} {musica}" if artista != "Desconhecido" else musica
         ano_web, comp_web = buscar_dados_musica_na_internet(termo_pesquisa)
@@ -362,7 +358,7 @@ elif opcao == "💿 Formatador de Acervo":
             lista_geral = []
             lista_sc = []
             
-            with st.spinner("Pesquisando dados oficiais no Spotify e Genius... Aguarde."):
+            with st.spinner("Pesquisando dados oficiais na Web... Aguarde."):
                 for linha in linhas:
                     res = processar_linha_musica(linha)
                     if res:
@@ -458,12 +454,12 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
-                    linha = inline_line = linha.strip()
-                    if not linha or "Marcador" in inline_line or "Total:" in inline_line or "DescriçãoDuração" in inline_line: continue
-                    linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', inline_line, flags=re.IGNORECASE)
-                    linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', inline_line, flags=re.IGNORECASE)
-                    if " - " in inline_line:
-                        partes = inline_line.split(" - ", 1)
+                    linha = linha.strip()
+                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
+                    linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
+                    linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
+                    if " - " in linha:
+                        partes = linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
@@ -472,7 +468,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                         instagram = banco_instagram.get(artista_busca, "")
                         linha_final = f"{artista_original} - {musica_limpa} {instagram}".strip()
                         resultado.append(linha_final)
-                texto_formatado = "\n".join(resultado)
+                texto_formatated = "\n".join(resultado)
                 st.subheader("📋 Roteiro Pronto para as Redes Sociais:")
-                st.text_area("Selecione tudo e copie:", value=texto_formatado, height=350)
+                st.text_area("Selecione tudo e copie:", value=texto_formatated, height=350)
                 st.balloons()
