@@ -3,7 +3,6 @@ import pandas as pd
 import re
 import smtplib
 import requests
-import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -140,7 +139,7 @@ def processar_linha_acervo_original(linha_bruta):
     linha_limpa_fim = linha_original.lower()
     if linha_limpa_fim.endswith(".mp3"):
         linha_original = linha_original[:-4].strip()
-        linha_limpa_fim = linha_limpa_fim[:-4].strip()
+        linha_limpa_fim = inline_limpa_fim := linha_limpa_fim[:-4].strip()
         
     eh_sc = False
     if linha_limpa_fim.endswith("- sc") or linha_limpa_fim.endswith("-sc"):
@@ -318,6 +317,7 @@ elif opcao == "💿 Formatador de Acervo":
                     st.error("Por favor, digite seu nome.")
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
+                    nome_acervo_real = "Túlio" if "Túlio" in destino_geral else "Jéssica"
                     
                     with st.spinner("Gravando na planilha destino e preparando e-mail..."):
                         for _, r in df_editado_g.iterrows():
@@ -331,17 +331,14 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=8)
+                                requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=10)
                             except:
                                 pass
                                 
                     enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
-                    
-                    # Pausa de sincronização para dar tempo do Google liberar a leitura
-                    time.sleep(2.0)
                     st.cache_data.clear()
                     
-                    st.success(f"🔥 Sucesso Absoluto! Músicas gravadas na linha correta da {destino_geral} e e-mail enviado!")
+                    st.success(f"🔥 Lote salvo com sucesso na planilha {nome_acervo_real} e e-mail de confirmação enviado!")
                     st.session_state["lote_geral_atual"] = pd.DataFrame()
                     st.rerun()
 
@@ -370,17 +367,14 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=8)
+                                requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=10)
                             except:
                                 pass
                                 
                     enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
-                    
-                    # Pausa de sincronização para garantir que apareça na pesquisa
-                    time.sleep(2.0)
                     st.cache_data.clear()
                     
-                    st.success("🔥 Sucesso Absoluto! Gravado na linha correta do Som da Ilha e e-mail disparado!")
+                    st.success("🔥 Lote salvo com sucesso na planilha Som da Ilha e e-mail de confirmação enviado!")
                     st.session_state["lote_sc_atual"] = pd.DataFrame()
                     st.rerun()
 
@@ -402,7 +396,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
-                    linha = inline_strip := linha.strip()
+                    linha = linha.strip()
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
