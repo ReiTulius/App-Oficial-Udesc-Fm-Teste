@@ -2,32 +2,32 @@ import streamlit as st
 import pandas as pd
 import re
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import datetime as dt
 
 # ==========================================
-# 📻 CONFIGURAÇÃO DO PAINEL & CONTA DE DISPARO
+# 📻 CONFIGURAÇÃO DO PAINEL & CREDENCIAIS
 # ==========================================
 st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
-# 🔐 CONTA DO ROBÔ (Quem envia)
+# 🔐 CONTA DO ROBÔ DE E-MAIL
 EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
 SENHA_ROBO_REMETENTE = "nvfxdrlzpkzbugao"
-
-# 📥 SEU E-MAIL (Quem recebe o relatório de quem cadastrou o lote)
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
 
-# 📊 LINKS DE EXPORTAÇÃO DIRETOS DO GOOGLE SHEETS
+# 📊 LINKS DE LEITURA (PLANILHAS ORIGINAIS)
 URL_SOM_DA_ILHA_PRO = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv"
 URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4bykDgEGRwlxdbjWrlW6mfY/export?format=csv"
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
-
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-if "banco_local_novas_musicas" not in st.session_state:
-    st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
+# 🚀 WEBHOOKS DE ESCRITA (APPS SCRIPT ENVIADOS PELO TÚLIO)
+WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
+WEBHOOK_TULIO = "https://script.google.com/macros/s/AKfycbxR5g2pWU_2_ClapUxY5PWCnH-C9NBrmiT8F1wf0GoLm2KV9jAmMlOQLSGdWsLHNzqX/exec"
+WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1CnrKwt8jvp-OWwHCFv3_FTQNJtGxT7m15hZGeO3k7ryWl3E9uQ/exec"
 
 # ==========================================
 # 📧 FUNÇÃO DE NOTIFICAÇÃO POR E-MAIL
@@ -35,9 +35,7 @@ if "banco_local_novas_musicas" not in st.session_state:
 def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
     if "@" not in EMAIL_ROBO_REMETENTE or "@" not in EMAIL_DESTINATARIO_OFICIAL:
         return
-        
     try:
-        # 🕒 Correção do Fuso Horário para Horário de Brasília (UTC -3)
         fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
         agora_local = datetime.now(fuso_brasilia)
         
@@ -46,7 +44,6 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         msg['To'] = EMAIL_DESTINATARIO_OFICIAL
         msg['Subject'] = f"📻 Novo Cadastro por: {nome_usuario} ({nome_acervo})"
         
-        # 🎵 Formatação limpa usando apenas o Nome do Arquivo Final (Sem colchetes)
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
             linhas_musicas.append(f"• {linha['Nome do Arquivo']}.mp3")
@@ -54,20 +51,19 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         
         corpo = f"""Olá Túlio,
 
-Um novo lote de músicas foi processado e armazenado no painel!
+Um novo lote de músicas foi processado e salvo na planilha!
 
 👤 QUEM CADASTROU: {nome_usuario}
-📍 DESTINO DO LOTE: Planilha {nome_acervo}
+📍 DESTINO DO LOTE: {nome_acervo}
 📅 DATA/HORA: {agora_local.strftime('%d/%m/%Y %H:%M:%S')}
 
-🎵 Músicas Processadas ({len(df_novas)} itens):
+🎵 Músicas Cadastradas ({len(df_novas)} itens):
 {lista_texto}
 
 ---
 Aviso automático do Painel de Controle Udesc FM."""
         
         msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
-        
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(EMAIL_ROBO_REMETENTE, SENHA_ROBO_REMETENTE)
@@ -77,7 +73,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         st.sidebar.error(f"Erro ao disparar e-mail de alerta: {e}")
 
 # ==========================================
-# 🔄 LEITOR DAS PLANILHAS
+# 🔄 LEITOR INTEGRADO DAS PLANILHAS
 # ==========================================
 @st.cache_data(ttl=5)
 def carregar_planilha_especifica(nome_acervo):
@@ -91,7 +87,6 @@ def carregar_planilha_especifica(nome_acervo):
         df = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip', encoding='utf-8')
         if df.empty:
             df = pd.read_csv(url, sep=None, engine='python', on_bad_lines='skip', encoding='latin1')
-        
         if not df.empty:
             df.dropna(how='all', inplace=True)
             df.columns = [str(c).strip() for c in df.columns]
@@ -107,14 +102,9 @@ def carregar_todos_os_acervos_reais():
         df_part = carregar_planilha_especifica(nome)
         if not df_part.empty:
             lista_dfs.append(df_part)
-
     if lista_dfs:
-        df_unificado = pd.concat(lista_dfs, ignore_index=True)
-        if not st.session_state["banco_local_novas_musicas"].empty:
-            df_unificado = pd.concat([df_unificado, st.session_state["banco_local_novas_musicas"]], ignore_index=True)
-        return df_unificado
-    return st.session_state["banco_local_novas_musicas"]
-
+        return pd.concat(lista_dfs, ignore_index=True)
+    return pd.DataFrame()
 
 # ==========================================
 # FUNÇÕES DO GERADOR DE SETLIST (INSTAGRAM)
@@ -145,34 +135,29 @@ def carregar_banco_instagram(url):
     except Exception as e:
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
-
 # ==========================================
-# FUNÇÕES DO FORMATADOR DE ACERVO
+# LÓGICA DO FORMATADOR DE ACERVO ORIGINAL
 # ==========================================
-def processar_linha_musica(linha_bruta):
+def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
     if not linha_original:
         return None
         
     linha_limpa_fim = linha_original.lower()
     if linha_limpa_fim.endswith(".mp3"):
+        linha_original = linha_original[:-4].strip()
         linha_limpa_fim = linha_limpa_fim[:-4].strip()
         
     eh_sc = False
     if linha_limpa_fim.endswith("- sc") or linha_limpa_fim.endswith("-sc"):
         eh_sc = True
+        linha_original = re.sub(r'\s*-\s*sc\s*$', '', linha_original, flags=re.IGNORECASE).strip()
         
     if "\\" in linha_original:
         linha_trabalho = linha_original.split("\\")[-1]
     else:
         linha_trabalho = linha_original
-        
-    if linha_trabalho.lower().endswith(".mp3"):
-        linha_trabalho = linha_trabalho[:-4]
-        
-    if eh_sc:
-        linha_trabalho = re.sub(r'\s*-\s*sc\s*$', '', linha_trabalho, flags=re.IGNORECASE).strip()
-        
+
     artista = ""
     participacao = ""
     musica = ""
@@ -182,35 +167,35 @@ def processar_linha_musica(linha_bruta):
     
     padrao_comp = r'\((comp\.|compa)[^)]+\)'
     busca_comp = re.search(padrao_comp, linha_trabalho, flags=re.IGNORECASE)
-    
     if busca_comp:
         compositores_com_parentese = busca_comp.group(0)
         compositores = re.sub(r'\((comp\.|compa)\s*', '', compositores_com_parentese, flags=re.IGNORECASE).rstrip(')')
         linha_trabalho = linha_trabalho.replace(compositores_com_parentese, "").replace("  ", " ")
 
     partes = [p.strip() for p in linha_trabalho.split(" - ")]
-    if len(partes) < 2:
-        return None
-        
-    artista = partes[0]
-    indice_atual = 1
-    if indice_atual < len(partes) and ("part." in partes[indice_atual].lower() or "part " in partes[indice_atual].lower()):
-        participacao = re.sub(r'\(?part\.?\s*', '', partes[indice_atual], flags=re.IGNORECASE).rstrip(')')
-        indice_atual += 1
-        
-    if indice_atual < len(partes):
-        musica = partes[indice_atual]
-        indice_atual += 1
-        
-    if indice_atual < len(partes):
-        if indice_atual == len(partes) - 1 and partes[indice_atual].isdigit():
-            pass
-        else:
-            formato = partes[indice_atual]
+    
+    if len(partes) >= 2:
+        artista = partes[0]
+        indice_atual = 1
+        if "part." in partes[indice_atual].lower() or "part " in partes[indice_atual].lower():
+            participacao = re.sub(r'\(?part\.?\s*', '', partes[indice_atual], flags=re.IGNORECASE).rstrip(')')
             indice_atual += 1
             
-    if len(partes) > indice_atual and partes[-1].isdigit():
-        ano = partes[-1]
+        if indice_atual < len(partes):
+            musica = partes[indice_atual]
+            indice_atual += 1
+            
+        if indice_atual < len(partes):
+            if indice_atual == len(partes) - 1 and partes[indice_atual].isdigit():
+                pass
+            else:
+                formato = partes[indice_atual]
+                indice_atual += 1
+                
+        if len(partes) > indice_atual and partes[-1].isdigit():
+            ano = partes[-1]
+    else:
+        musica = linha_trabalho
 
     part_str = f" - (part. {participacao})" if participacao else ""
     comp_str = f" (comp. {compositores})" if compositores else ""
@@ -221,7 +206,6 @@ def processar_linha_musica(linha_bruta):
     nome_arquivo_formatado = f"{artista}{part_str} - {musica}{comp_str}{formato_str}{ano_str}{sc_str}"
     nome_arquivo_formatado = re.sub(r'\s+', ' ', nome_arquivo_formatado).strip()
 
-    # 🕒 Fuso horário de Brasília para a tabela
     fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
@@ -232,7 +216,6 @@ def processar_linha_musica(linha_bruta):
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
     }
 
-
 # --- INTERFACE DE NAVEGAÇÃO ---
 st.sidebar.title("Painel de Controle")
 opcao = st.sidebar.radio(
@@ -241,7 +224,6 @@ opcao = st.sidebar.radio(
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Udesc FM 🎧")
-
 
 # ==========================================
 # 🔍 ABA: BUSCAR NO ACERVO
@@ -286,22 +268,22 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO
+# 💿 ABA: FORMATADOR DE ACERVO + GRAVAÇÃO REAL VIA WEBHOOKS
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
-    st.title("Automatizador de Acervo Para Udesc FM")
-    st.markdown("Insira a lista de músicas para limpar, formatar e separar.")
+    st.title("💿 Formatador & Hospedagem de Novos Cadastros")
+    st.markdown("Insira os títulos estruturados abaixo. Ao confirmar, o site usará as planilhas ponte seguras para armazenar.")
 
-    texto_bruto = st.text_area("Cole aqui as linhas brutas das músicas baixadas:", height=150)
+    texto_bruto = st.text_area("Cole aqui as linhas do seu acervo:", height=150)
 
-    if st.button("Processar e Organizar Acervos 🚀", type="primary"):
+    if st.button("Formatar Acervo ⚡", type="primary"):
         if texto_bruto:
             linhas = texto_bruto.split('\n')
             lista_geral = []
             lista_sc = []
             
             for linha in linhas:
-                res = processar_linha_musica(linha)
+                res = processar_linha_acervo_original(linha)
                 if res:
                     eh_sc = res.pop("eh_sc")
                     if eh_sc:
@@ -323,59 +305,90 @@ elif opcao == "💿 Formatador de Acervo":
                         }
                         lista_geral.append(dados_geral)
             
-            if lista_geral:
-                st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral).drop_duplicates(subset=["Nome do Arquivo"], keep="first")
-            else:
-                st.session_state.pop("lote_geral_atual", None)
-                
-            if lista_sc:
-                st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc).drop_duplicates(subset=["Nome do Arquivo"], keep="first")
-            else:
-                st.session_state.pop("lote_sc_atual", None)
+            if lista_geral: st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral)
+            if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
             st.balloons()
 
-    # Lote Geral
-    if "lote_geral_atual" in st.session_state:
-        st.success(f"🎉 Músicas prontas para o ACERVO GERAL!")
-        df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="editor_geral")
+    # Fluxo Lote Geral (Túlio Ponte / Jéssica)
+    if "lote_geral_atual" in st.session_state and not st.session_state["lote_geral_atual"].empty:
+        st.success("🎉 Lote GERAL formatado com sucesso:")
+        df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="edit_g_real")
         st.session_state["lote_geral_atual"] = df_editado_g
         
-        with st.expander("📥 MENU DE CADASTRO - Enviar este lote Geral para a planilha"):
-            u_nome_g = st.text_input("Seu Nome (Identificação):", key="nome_user_g", placeholder="Ex: João Silva")
-            destino_geral = st.selectbox("Escolha o destino:", ["Planilha Túlio", "Planilha Jéssica"])
+        with st.expander("📥 SALVAR NO BANCO DE DADOS (Geral)"):
+            u_nome_g = st.text_input("Seu Nome (Identificação):", key="usr_g")
+            destino_geral = st.selectbox("Escolha a planilha destino:", ["Planilha Túlio (Ponte)", "Planilha Jéssica (Direto)"])
             
-            if st.button(f"Confirmar e Gravar Músicas no(a) {destino_geral} 💾", key="btn_cad_geral"):
-                if u_nome_g.strip():
-                    df_g_salvar = st.session_state["lote_geral_atual"].copy()
-                    df_g_salvar["Acervo Origem"] = destino_geral.replace("Planilha ", "")
-                    st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g_salvar], ignore_index=True)
-                    
-                    enviar_notificacao_email(destino_geral, df_g_salvar, u_nome_g)
-                    st.success(f"✅ Registradas! Notificação enviada para o e-mail do Túlio.")
+            if st.button("Gravar Lote Geral nas Nuvens 💾", key="save_g_btn"):
+                if not u_nome_g.strip():
+                    st.error("Por favor, digite seu nome.")
                 else:
-                    st.error("⚠️ Insira o seu nome para identificação antes de cadastrar.")
-        st.markdown("---")
-        
-    # Lote SC (Som da Ilha)
-    if "lote_sc_atual" in st.session_state:
-        st.warning(f"🏝️ Músicas catarinenses prontas para o SOM DA ILHA!")
-        df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="editor_sc")
+                    url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
+                    sucessos = 0
+                    
+                    with st.spinner("Hospedando dados via API..."):
+                        for _, r in df_editado_g.iterrows():
+                            payload = {
+                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                                "idioma_est": str(r["Idioma"]), "classificacao": str(r["Classificação"]),
+                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                            }
+                            try:
+                                res = requests.post(url_webhook, json=payload, timeout=8)
+                                if res.status_code == 200 and "sucesso" in res.text:
+                                    sucessos += 1
+                            except:
+                                pass
+                                
+                    if successes := sucessos:
+                        st.success(f"🔥 Sucesso! {successes} músicas foram salvas permanentemente no Google Sheets.")
+                        enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
+                        st.session_state["lote_geral_atual"] = pd.DataFrame()
+                        st.cache_data.clear()
+                    else:
+                        st.error("Falha na comunicação com o Google. Verifique a implantação do Apps Script.")
+
+    # Fluxo Lote SC (Som da Ilha Ponte)
+    if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
+        st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
+        df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="edit_s_real")
         st.session_state["lote_sc_atual"] = df_editado_s
         
-        with st.expander("📥 MENU DE CADASTRO - Enviar este lote para o Som da Ilha"):
-            u_nome_s = st.text_input("Seu Nome (Identificação):", key="nome_user_s", placeholder="Ex: João Silva")
+        with st.expander("📥 SALVAR NO BANCO DE DADOS (Som da Ilha Ponte)"):
+            u_nome_s = st.text_input("Seu Nome (Identificação):", key="usr_s")
             
-            if st.button("Confirmar e Gravar Músicas na Planilha Som da Ilha 💾", key="btn_cad_sc"):
-                if u_nome_s.strip():
-                    df_s_salvar = st.session_state["lote_sc_atual"].copy()
-                    df_s_salvar["Acervo Origem"] = "Som da Ilha"
-                    st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s_salvar], ignore_index=True)
-                    
-                    enviar_notificacao_email("Som da Ilha", df_s_salvar, u_nome_s)
-                    st.success("✅ Registradas com sucesso no acervo e notificação enviada!")
+            if st.button("Gravar Lote Som da Ilha nas Nuvens 💾", key="save_s_btn"):
+                if not u_nome_s.strip():
+                    st.error("Por favor, digite seu nome.")
                 else:
-                    st.error("⚠️ Insira o seu nome para identificação antes de cadastrar.")
-        st.markdown("---")
+                    sucessos = 0
+                    with st.spinner("Hospedando dados via API..."):
+                        for _, r in df_editado_s.iterrows():
+                            payload = {
+                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                                "idioma_est": str(r["Est"]), "classificacao": str(r["Classificação"]),
+                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                            }
+                            try:
+                                res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, timeout=8)
+                                if res.status_code == 200 and "sucesso" in res.text:
+                                    sucessos += 1
+                            except:
+                                pass
+                                
+                    if successes := sucessos:
+                        st.success(f"🔥 Sucesso! {successes} músicas catarinenses foram guardadas com segurança na planilha ponte.")
+                        enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
+                        st.session_state["lote_sc_atual"] = pd.DataFrame()
+                        st.cache_data.clear()
+                    else:
+                        st.error("Falha técnica ao gravar no Google Sheets. Confira o Apps Script.")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
@@ -396,11 +409,11 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
                 for linha in linhas:
                     linha = linha.strip()
-                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
+                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in inline_line: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
-                        partes = presidential_slice = linha.split(" - ", 1)
+                        partes = linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
