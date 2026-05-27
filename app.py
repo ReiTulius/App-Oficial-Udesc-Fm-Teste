@@ -210,7 +210,7 @@ def processar_linha_acervo_original(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "eh_sc": eh_sc, "Música": musica, "Artista": artist, "Compositores": compositores,
+        "eh_sc": eh_sc, "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado
@@ -268,7 +268,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO + SUPORTE A REDIRECIONAMENTO (ANTI-LOOP)
+# 💿 ABA: FORMATADOR DE ACERVO + ENVIO SEGURO VIA API
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -326,7 +326,7 @@ elif opcao == "💿 Formatador de Acervo":
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     sucessos = 0
                     
-                    with st.spinner("Hospedando dados via API (Seguindo Redirecionamento)..."):
+                    with st.spinner("Hospedando dados via API..."):
                         for _, r in df_editado_g.iterrows():
                             payload = {
                                 "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
@@ -338,7 +338,6 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                # CRUCIAL: allow_redirects=True impede o Python de travar carregando para sempre no Google
                                 res = requests.post(url_webhook, json=payload, headers=headers, allow_redirects=True, timeout=15)
                                 if res.status_code == 200 or "Sucesso" in res.text:
                                     sucessos += 1
@@ -352,7 +351,7 @@ elif opcao == "💿 Formatador de Acervo":
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("O Google não acusou recebimento. Verifique se a implantação do script aceita JSON.")
+                        st.error("O Google não retornou confirmação. Verifique a configuração do seu Apps Script.")
 
     # Fluxo Lote SC
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
@@ -380,7 +379,6 @@ elif opcao == "💿 Formatador de Acervo":
                             }
                             try:
                                 headers = {"Content-Type": "application/json"}
-                                # Força o redirecionamento seguro para evitar carregamento infinito
                                 res = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers=headers, allow_redirects=True, timeout=15)
                                 if res.status_code == 200 or "Sucesso" in res.text:
                                     sucessos += 1
@@ -394,7 +392,7 @@ elif opcao == "💿 Formatador de Acervo":
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Erro ao processar lote no Som da Ilha.")
+                        st.error("Não foi possível salvar no Som da Ilha.")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
@@ -413,13 +411,13 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
             if texto_bruto_sysrad:
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
-                for linha in lines:
+                for linha in linhas:
                     linha = linha.strip()
                     if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha: continue
                     linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
                     if " - " in linha:
-                        partes = inline_split := linha.split(" - ", 1)
+                        partes = linha.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
@@ -428,7 +426,7 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
                         instagram = banco_instagram.get(artista_busca, "")
                         linha_final = f"{artista_original} - {musica_limpa} {instagram}".strip()
                         resultado.append(linha_final)
-                texto_formatated = "\n".join(resultado)
+                texto_formatado = "\n".join(resultado)
                 st.subheader("📋 Roteiro Pronto para as Redes Sociais:")
-                st.text_area("Selecione tudo e copie:", value=texto_formatated, height=350)
+                st.text_area("Selecione tudo e copie:", value=texto_formatado, height=350)
                 st.balloons()
