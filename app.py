@@ -13,11 +13,11 @@ import datetime as dt
 # ==========================================
 st.set_page_config(page_title="Acervo Oficial Integrado - Udesc FM", page_icon="📻", layout="wide")
 
-# 🔐 CONTA DO ROBÔ (Quem envia)
+# 🔐 CONTA DO ROBÔ
 EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
 SENHA_ROBO_REMETENTE = "nvfxdrlzpkzbugao"
 
-# 📥 SEU E-MAIL (Quem recebe o relatório de quem cadastrou o lote)
+# 📥 SEU E-MAIL
 EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
 
 # 📊 LINKS DE EXPORTAÇÃO DIRETOS DO GOOGLE SHEETS
@@ -31,38 +31,20 @@ if "banco_local_novas_musicas" not in st.session_state:
     st.session_state["banco_local_novas_musicas"] = pd.DataFrame()
 
 # ==========================================
-# 🌐 INTEL-SEARCH: MUSICBRAINZ & GENIUS API (SEM INFRAESTRUTURA EXTRA)
+# 🌐 MECANISMO DE BUSCA PARA O SYSRAD
 # ==========================================
-def buscar_dados_musica_na_internet(termo_busca):
-    """Busca o ano no MusicBrainz e compositores na API pública do Genius de forma limpa"""
+def buscar_dados_profundos_web(termo_busca):
+    """Busca inteligente de metadados para novos arquivos"""
     ano_descoberto = ""
     compositores_descobertos = ""
     
-    # Limpeza de lixos eletrônicos de download para refinar a pesquisa
     termo_limpo = re.sub(r'(spotidown\.app|y2mate\.com|y2mate|youtube|download|mp3|-\s*sc$)', '', termo_busca, flags=re.IGNORECASE).strip()
     termo_limpo = re.sub(r'^\s*-\s*|\s*-\s*$', '', termo_limpo).strip()
     
     if not termo_limpo:
         return "", ""
 
-    # 1. BUSCA DE ANO NO MUSICBRAINZ (API Aberta JSON)
-    try:
-        url_mb = f"https://musicbrainz.org/ws/2/recording/?query={requests.utils.quote(termo_limpo)}&fmt=json"
-        headers_mb = {"User-Agent": "UdescFMAcervoBot/1.0 (heytuliusmusic@gmail.com)"}
-        res_mb = requests.get(url_mb, headers=headers_mb, timeout=4).json()
-        
-        recordings = res_mb.get("recordings", [])
-        if recordings:
-            # Pega a primeira ocorrência que contenha uma data válida de lançamento
-            for rec in recordings[:3]:
-                manuf_date = rec.get("first-release-date", "")
-                if manuf_date and len(manuf_date) >= 4:
-                    ano_descoberto = manuf_date[:4]
-                    break
-    except:
-        pass
-
-    # 2. BUSCA DE COMPOSITORES NO GENIUS (API Aberta JSON)
+    # Busca no Genius (Compositores e anos de lançamentos recentes)
     try:
         url_genius = f"https://api.genius.com/search?q={requests.utils.quote(termo_limpo)}"
         headers_genius = {"Authorization": "Bearer 8Ym7_m7Y-M3v7vXz8VpZmXg1_N6g8O-k_9xN2Vb5v_M6b7vX_z8VpZ"}
@@ -70,16 +52,39 @@ def buscar_dados_musica_na_internet(termo_busca):
         
         hits = res_genius.get("response", {}).get("hits", [])
         if hits:
-            song_id = hits[0]["result"]["id"]
+            song_data = hits[0]["result"]
+            song_id = song_data["id"]
+            
             url_song = f"https://api.genius.com/songs/{song_id}"
             res_song = requests.get(url_song, headers=headers_genius, timeout=4).json()
+            song_details = res_song.get("response", {}).get("song", {})
             
-            writers = res_song.get("response", {}).get("song", {}).get("writer_artists", [])
+            # Tenta pegar o ano de lançamento direto do Genius
+            release_date = song_details.get("release_date", "")
+            if release_date and len(release_date) >= 4:
+                ano_descoberto = release_date[:4]
+                
+            writers = song_details.get("writer_artists", [])
             if writers:
-                compositores_com_nome = [w["name"] for w in writers]
-                compositores_descobertos = ", ".join(compositores_com_nome)
+                compositores_descobertos = ", ".join([w["name"] for w in writers])
     except:
         pass
+
+    # Backup de Ano no MusicBrainz se o Genius falhar
+    if not ano_descoberto:
+        try:
+            url_mb = f"https://musicbrainz.org/ws/2/recording/?query={requests.utils.quote(termo_limpo)}&fmt=json"
+            headers_mb = {"User-Agent": "UdescFMAcervoBot/1.0 (heytuliusmusic@gmail.com)"}
+            res_mb = requests.get(url_mb, headers=headers_mb, timeout=3).json()
+            recordings = res_mb.get("recordings", [])
+            if recordings:
+                for rec in recordings[:2]:
+                    manuf_date = rec.get("first-release-date", "")
+                    if manuf_date and len(manuf_date) >= 4:
+                        ano_descoberto = manuf_date[:4]
+                        break
+        except:
+            pass
 
     return ano_descoberto, compositores_descobertos
 
@@ -199,16 +204,13 @@ def carregar_banco_instagram(url):
 
 
 # ==========================================
-# FUNÇÕES DO FORMATADOR DE ACERVO
+# LÓGICA DO FORMATADOR DE ACERVO ORIGINAL
 # ==========================================
-def processar_linha_musica(linha_bruta):
+def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
     if not linha_original:
         return None
         
-    # Limpa as tags mais comuns de scrapers de áudio
-    linha_original = re.sub(r'(spotidown\.app\s*-\s*|y2mate\.com\s*-\s*|y2mate\s*|download\s*)', '', linha_original, flags=re.IGNORECASE)
-    
     linha_limpa_fim = linha_original.lower()
     if linha_limpa_fim.endswith(".mp3"):
         linha_original = linha_original[:-4].strip()
@@ -262,14 +264,6 @@ def processar_linha_musica(linha_bruta):
             ano = partes[-1]
     else:
         musica = linha_trabalho
-        artista = "Desconhecido"
-
-    # 🌐 CHAMA A CONSULTA DA INTERNET SE FALTAR DADOS CRUCIAIS
-    if not ano or not compositores:
-        termo_pesquisa = f"{artista} {musica}" if artista != "Desconhecido" else musica
-        ano_web, comp_web = buscar_dados_musica_na_internet(termo_pesquisa)
-        if not ano: ano = ano_web
-        if not compositores: compositores = comp_web
 
     part_str = f" - (part. {participacao})" if participacao else ""
     comp_str = f" (comp. {compositores})" if compositores else ""
@@ -295,7 +289,7 @@ def processar_linha_musica(linha_bruta):
 st.sidebar.title("Painel de Controle")
 opcao = st.sidebar.radio(
     "Navegar para:",
-    ["🔍 Buscar no Acervo", "📂 Ver Todo o Acervo", "💿 Formatador de Acervo", "📸 Gerador de Setlist (Instagram)"]
+    ["🔍 Buscar no Acervo", "📂 Ver Todo o Acervo", "💿 Formatador de Acervo", "📻 Gerar Nome para o Sysrad", "📸 Gerador de Setlist (Instagram)"]
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Udesc FM 🎧")
@@ -344,97 +338,146 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO
+# 💿 ABA: FORMATADOR DE ACERVO (RESTAURADO ORIGINAL)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
-    st.title("Automatizador de Acervo Inteligente (Com Busca Web) 🚀")
-    st.markdown("Insira os nomes bagunçados dos arquivos baixados. O robô vai limpar as tags e buscar Ano e Compositores na Internet!")
+    st.title("💿 Formatador de Títulos - Padrão do Acervo")
+    st.markdown("Insira as linhas brutas estruturadas exatamente como eram processadas antes.")
 
-    texto_bruto = st.text_area("Cole aqui os títulos brutos dos arquivos baixados da internet:", height=150, placeholder="Ex:\nSpotiDown.App - última roupa - Ítallo\ny2mate.com - Lagum - Deixa")
+    texto_bruto = st.text_area("Cole aqui as linhas do seu acervo:", height=150)
 
-    if st.button("Processar, Pesquisar e Formatar Títulos 🌐", type="primary"):
+    if st.button("Formatar Acervo 💾", type="primary"):
         if texto_bruto:
             linhas = texto_bruto.split('\n')
             lista_geral = []
             lista_sc = []
             
-            with st.spinner("Pesquisando dados oficiais na Web... Aguarde."):
-                for linha in linhas:
-                    res = processar_linha_musica(linha)
-                    if res:
-                        eh_sc = res.pop("eh_sc")
-                        if eh_sc:
-                            dados_sc = {
-                                "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
-                                "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
-                                "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Est": "SC",
-                                "Classificação": res["Classificação"], "Andamento": res["Andamento"],
-                                "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
-                            }
-                            lista_sc.append(dados_sc)
-                        else:
-                            dados_geral = {
-                                "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
-                                "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
-                                "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Idioma": "",
-                                "Classificação": res["Classificação"], "Andamento": res["Andamento"],
-                                "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
-                            }
-                            lista_geral.append(dados_geral)
+            for linha in linhas:
+                res = processar_linha_acervo_original(linha)
+                if res:
+                    eh_sc = res.pop("eh_sc")
+                    if eh_sc:
+                        dados_sc = {
+                            "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
+                            "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
+                            "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Est": "SC",
+                            "Classificação": res["Classificação"], "Andamento": res["Andamento"],
+                            "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
+                        }
+                        lista_sc.append(dados_sc)
+                    else:
+                        dados_geral = {
+                            "Música": res["Música"], "Artista": res["Artista"], "Compositores": res["Compositores"],
+                            "Formato": res["Formato"], "Ano": res["Ano"], "Origem": res["Origem"],
+                            "Gênero": res["Gênero"], "Gênero Relacionado": res["Gênero Relacionado"], "Idioma": "",
+                            "Classificação": res["Classificação"], "Andamento": res["Andamento"],
+                            "Data Cadastro": res["Data Cadastro"], "Participações": res["Participações"], "Nome do Arquivo": res["Nome do Arquivo"]
+                        }
+                        lista_geral.append(dados_geral)
             
-            if lista_geral:
-                st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral).drop_duplicates(subset=["Nome do Arquivo"], keep="first")
-            else:
-                st.session_state.pop("lote_geral_atual", None)
-                
-            if lista_sc:
-                st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc).drop_duplicates(subset=["Nome do Arquivo"], keep="first")
-            else:
-                st.session_state.pop("lote_sc_atual", None)
+            if lista_geral: st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral)
+            if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
             st.balloons()
 
-    # Lote Geral
+    # Exibição dos lotes originais
     if "lote_geral_atual" in st.session_state:
-        st.success(f"🎉 Títulos Gerados para o ACERVO GERAL (Você pode editar as células direto na tabela se precisar):")
-        df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="editor_geral")
+        st.success("🎉 Lote GERAL formatado:")
+        df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True)
         st.session_state["lote_geral_atual"] = df_editado_g
-        
-        with st.expander("📥 MENU DE CADASTRO - Enviar este lote Geral para a planilha"):
-            u_nome_g = st.text_input("Seu Nome (Identificação):", key="nome_user_g", placeholder="Ex: João Silva")
-            destino_geral = st.selectbox("Escolha o destino:", ["Planilha Túlio", "Planilha Jéssica"])
-            
-            if st.button(f"Confirmar e Gravar Músicas no(a) {destino_geral} 💾", key="btn_cad_geral"):
-                if u_nome_g.strip():
-                    df_g_salvar = st.session_state["lote_geral_atual"].copy()
-                    df_g_salvar["Acervo Origem"] = destino_geral.replace("Planilha ", "")
-                    st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g_salvar], ignore_index=True)
-                    
-                    enviar_notificacao_email(destino_geral, df_g_salvar, u_nome_g)
-                    st.success(f"✅ Registradas! Notificação enviada para o e-mail do Túlio.")
-                else:
-                    st.error("⚠️ Insira o seu nome para identificação antes de cadastrar.")
-        st.markdown("---")
-        
-    # Lote SC (Som da Ilha)
+        with st.expander("📥 Gravar Lote Geral"):
+            u_nome_g = st.text_input("Seu Nome:", key="u_g")
+            destino_geral = st.selectbox("Destino:", ["Planilha Túlio", "Planilha Jéssica"])
+            if st.button("Confirmar Cadastro Geral", key="btn_g"):
+                df_g_salvar = st.session_state["lote_geral_atual"].copy()
+                df_g_salvar["Acervo Origem"] = destino_geral.replace("Planilha ", "")
+                st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_g_salvar], ignore_index=True)
+                enviar_notificacao_email(destino_geral, df_g_salvar, u_nome_g)
+                st.success("Gravado!")
+
     if "lote_sc_atual" in st.session_state:
-        st.warning(f"🏝️ Títulos Gerados para o SOM DA ILHA (Catarinenses):")
-        df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="editor_sc")
+        st.warning("🏝️ Lote SOM DA ILHA formatado:")
+        df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True)
         st.session_state["lote_sc_atual"] = df_editado_s
-        
-        with st.expander("📥 MENU DE CADASTRO - Enviar este lote para o Som da Ilha"):
-            u_nome_s = st.text_input("Seu Nome (Identificação):", key="nome_user_s", placeholder="Ex: João Silva")
+        with st.expander("📥 Gravar Som da Ilha"):
+            u_nome_s = st.text_input("Seu Nome:", key="u_s")
+            if st.button("Confirmar Cadastro Som da Ilha", key="btn_s"):
+                df_s_salvar = st.session_state["lote_sc_atual"].copy()
+                df_s_salvar["Acervo Origem"] = "Som da Ilha"
+                st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s_salvar], ignore_index=True)
+                enviar_notificacao_email("Som da Ilha", df_s_salvar, u_nome_s)
+                st.success("Gravado!")
+
+# ==========================================
+# 📻 NOVA ABA: GERAR NOME PARA O SYSRAD (MENU À PARTE)
+# ==========================================
+elif opcao == "📻 Gerar Nome para o Sysrad":
+    st.title("📻 Formatador de Arquivos Brutos para o Sysrad 🚀")
+    st.markdown("Insira nomes bagunçados de downloads (ex: links do Spotify ou títulos com tags). O sistema limpa e pesquisa dados para você conferir.")
+
+    texto_sysrad_bruto = st.text_area("Cole aqui os nomes brutos dos arquivos recém-baixados:", height=150, placeholder="Ex:\nSpotiDown.App - última roupa - Ítallo\ny2mate.com - Lagum - Deixa")
+    marcar_sc_geral = st.checkbox("Músicas são de Artistas Catarinenses (Adicionar '- SC' no final)", value=False)
+
+    if st.button("Analisar e Puxar Dados da Internet 🌐", type="primary"):
+        if texto_sysrad_bruto:
+            linhas = texto_sysrad_bruto.split('\n')
+            lista_analise = []
             
-            if st.button("Confirmar e Gravar Músicas na Planilha Som da Ilha 💾", key="btn_cad_sc"):
-                if u_nome_s.strip():
-                    df_s_salvar = st.session_state["lote_sc_atual"].copy()
-                    df_s_salvar["Acervo Origem"] = "Som da Ilha"
-                    st.session_state["banco_local_novas_musicas"] = pd.concat([st.session_state["banco_local_novas_musicas"], df_s_salvar], ignore_index=True)
+            with st.spinner("Pesquisando dados complementares na Web..."):
+                for linha in list(dict.fromkeys(linhas)): # Remove duplicados na colagem
+                    linha_limpa = re.sub(r'(spotidown\.app\s*-\s*|y2mate\.com\s*-\s*|y2mate\s*|download\s*)', '', linha, flags=re.IGNORECASE).strip()
+                    linha_limpa = re.sub(r'\.mp3$', '', linha_limpa, flags=re.IGNORECASE).strip()
                     
-                    enviar_notificacao_email("Som da Ilha", df_s_salvar, u_nome_s)
-                    st.success("✅ Registradas com sucesso no acervo e notificação enviada!")
-                else:
-                    st.error("⚠️ Insira o seu nome para identificação antes de cadastrar.")
-        st.markdown("---")
+                    # Quebra básica inicial para tentar separar artista e música
+                    partes = [p.strip() for p in linha_limpa.split(" - ")]
+                    artista_previsto = "Desconhecido"
+                    musica_prevista = linha_limpa
+                    
+                    if len(partes) >= 2:
+                        artista_previsto = partes[0]
+                        musica_prevista = partes[1]
+                    elif len(partes) == 1 and " - " not in linha_limpa:
+                        # Se veio de trás para frente ou bagunçado
+                        partes_invertidas = linha_limpa.split(" - ")
+                        
+                    ano_w, comp_w = buscar_dados_profundos_web(linha_limpa)
+                    
+                    lista_analise.append({
+                        "Artista": artista_previsto,
+                        "Música": musica_prevista,
+                        "Compositores": comp_w if comp_w else artista_previsto,
+                        "Ano": ano_w if ano_w else "2026",
+                        "É de SC?": marcar_sc_geral
+                    })
+                    
+            st.session_state["tabela_sysrad"] = pd.DataFrame(lista_analise)
+
+    if "tabela_sysrad" in st.session_state:
+        st.info("💡 Confira os dados abaixo. Você pode dar dois cliques em qualquer célula (como Ano ou Compositores) para corrigir antes de gerar a linha final!")
+        
+        # Grid interativo para conferência humana
+        df_conferido = st.data_editor(st.session_state["tabela_sysrad"], use_container_width=True, key="editor_sysrad_rec")
+        st.session_state["tabela_sysrad"] = df_conferido
+        
+        if st.button("Gerar Nomes Padronizados (Coluna N) 💎"):
+            st.subheader("📋 Títulos Prontos para Renomear seu Arquivo:")
+            
+            linhas_finais_coluna_n = []
+            for _, r in df_conferido.iterrows():
+                art = str(r["Artista"]).strip()
+                mus = str(r["Música"]).strip()
+                comp = str(r["Compositores"]).strip()
+                ano_f = str(r["Ano"]).strip()
+                sc_f = " - SC" if r["É de SC?"] else ""
+                
+                comp_str = f" (comp. {comp})" if comp and comp.lower() != "nan" else ""
+                ano_str = f" - {ano_f}" if ano_f and ano_f.lower() != "nan" else ""
+                
+                linha_final = f"{art} - {mus}{comp_str}{ano_str}{sc_f}"
+                linha_final = re.sub(r'\s+', ' ', linha_final).strip()
+                linhas_finais_coluna_n.append(linha_final)
+                
+            texto_saida = "\n".join(linhas_finais_coluna_n)
+            st.text_area("Copie as linhas abaixo para usar no Sysrad:", value=texto_saida, height=200)
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
