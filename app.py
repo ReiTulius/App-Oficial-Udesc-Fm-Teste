@@ -25,7 +25,7 @@ URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlM
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
 # 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS (DO APP)
-URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIzsCgNo/edit?usp=sharing"
+URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIZsCgNo/edit?usp=sharing"
 URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/edit?usp=sharing"
 URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/edit?usp=sharing"
 
@@ -81,7 +81,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         pass
 
 # ==========================================
-# 🔄 LEITOR INTEGRADO DO ACERVO CORRIGIDO
+# 🔄 LEITOR INTEGRADO DO ACERVO
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
     try:
@@ -114,10 +114,9 @@ def puxar_dados_do_google(url, nome_acervo):
         df.dropna(how='all', inplace=True)
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Limpar colunas com erro de fórmula ou vazias do Google Sheets (como o #REF!)
+        # Filtragem para remover colunas corrompidas do Sheets
         df = df[[c for c in df.columns if "REF!" not in c and not c.startswith("Unnamed:")]]
         
-        # Dicionário de padronização de cabeçalhos
         mapeamento = {
             "musica": "Música", "música": "Música", "artista": "Artista",
             "compositores": "Compositores", "compositor": "Compositores",
@@ -216,7 +215,7 @@ def processar_linha_acervo_original(linha_bruta):
     if not linha_original:
         return None
 
-    # CORREÇÃO: Removido o argumento Web incorreto do re.search
+    # Verifica se contém a tag clássica de SC
     eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
@@ -279,7 +278,6 @@ def processar_linha_acervo_original(linha_bruta):
     fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
-    # CORREÇÃO: Corrigido typo de 'artist' para 'artista'
     return {
         "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
@@ -319,7 +317,6 @@ if opcao == "🔍 Buscar no Acervo":
     st.title("🔍 Acervo Oficial Integrado - Udesc FM")
     df_total = st.session_state["banco_completo"]
     
-    # Seção de Métricas Visuais na Página Inicial
     if not df_total.empty:
         total_musicas = len(df_total)
         total_sc = len(df_total[df_total["Acervo Origem"] == "Som da Ilha"])
@@ -351,7 +348,6 @@ if opcao == "🔍 Buscar no Acervo":
         else:
             st.error("Nenhuma música encontrada.")
             
-    # Painel das últimas cadastradas (Exibe as últimas 10 linhas inseridas no banco)
     if not termo and not df_total.empty:
         st.write("### 📅 Adicionadas Recentemente no Sistema:")
         ultimas_cadastradas = df_total.tail(10).iloc[::-1]
@@ -433,17 +429,17 @@ elif opcao == "💿 Formatador de Acervo":
                             "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                         })
                     
-                    with st.spinner(f"🚀 Despachando lote completo de {total_g} músicas instantaneamente..."):
+                    with st.spinner(f"🚀 Despachando lote completo de {total_g} músicas..."):
                         sucesso, motivo = enviar_lote_completo_google(url_webhook, pacote_lote)
                     
-                    if接触:
+                    if sucesso:
                         st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                         
-                        st.write("🔄 Sincronizando e quebrando cache do Google...")
+                        st.write("🔄 Sincronizando banco...")
                         inicializar_acervos(forcar_recarga=True)
                         
-                        st.success(f"🔥 Sucesso total! As {total_g} músicas foram salvas em bloco e o site já está atualizado!")
+                        st.success(f"🔥 Sucesso total! As {total_g} músicas foram salvas e integradas!")
                         st.session_state["lote_geral_atual"] = pd.DataFrame()
                         time.sleep(1.0)
                         st.rerun()
@@ -475,22 +471,22 @@ elif opcao == "💿 Formatador de Acervo":
                             "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                         })
                     
-                    with st.spinner(f"🚀 Despachando lote Som da Ilha de {total_s} músicas instantaneamente..."):
+                    with st.spinner(f"🚀 Despachando lote Som da Ilha de {total_s} músicas..."):
                         sucesso, motivo = enviar_lote_completo_google(WEBHOOK_SOM_DA_ILHA, pacote_lote_s)
                                 
                     if sucesso:
                         st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
                         
-                        st.write("🔄 Sincronizando e quebrando cache do Google...")
+                        st.write("🔄 Sincronizando banco...")
                         inicializar_acervos(forcar_recarga=True)
                         
-                        st.success(f"🔥 Sucesso total! As {total_s} músicas do Som da Ilha foram salvas e integradas!")
+                        st.success(f"🔥 Sucesso total! As {total_s} músicas do Som da Ilha foram salvas!")
                         st.session_state["lote_sc_atual"] = pd.DataFrame()
                         time.sleep(1.0)
                         st.rerun()
                     else:
-                        st.error(f"❌ Falha no envio em bloco (Som da Ilha): {motivo}")
+                        st.error(f"❌ Falha no envio: {motivo}")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
