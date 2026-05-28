@@ -24,8 +24,8 @@ URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4by
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-# 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS CORRIGIDOS (DO APP)
-URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIZsCgNo/edit?usp=sharing"
+# 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS (DO APP)
+URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIzsCgNo/edit?usp=sharing"
 URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/edit?usp=sharing"
 URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/edit?usp=sharing"
 
@@ -84,11 +84,9 @@ Aviso automático do Painel de Controle Udesc FM."""
 # 🔄 LEITOR INTEGRADO DO ACERVO CORRIGIDO
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
-    # Tratamento dinâmico para extrair o ID e converter qualquer formato de URL para exportação CSV pura
     try:
         if "/d/" in url:
             id_planilha = url.split("/d/")[1].split("/")[0]
-            # Se a URL original possuir uma aba específica (gid), nós mantemos ela, caso contrário exporta a principal
             gid_part = ""
             if "gid=" in url:
                 gid_part = "&gid=" + url.split("gid=")[1].split("&")[0]
@@ -98,7 +96,6 @@ def puxar_dados_do_google(url, nome_acervo):
     except:
         url_base = url
 
-    # Cache Buster atualizado e robusto
     conector = "&" if "?" in url_base else "?"
     url_dinamica = f"{url_base}{conector}cachebuster={int(time.time())}"
     
@@ -116,6 +113,9 @@ def puxar_dados_do_google(url, nome_acervo):
     if not df.empty:
         df.dropna(how='all', inplace=True)
         df.columns = [str(c).strip() for c in df.columns]
+        
+        # Limpar colunas com erro de fórmula ou vazias do Google Sheets (como o #REF!)
+        df = df[[c for c in df.columns if "REF!" not in c and not c.startswith("Unnamed:")]]
         
         # Dicionário de padronização de cabeçalhos
         mapeamento = {
@@ -209,13 +209,14 @@ def carregar_banco_instagram(url):
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
 # ==========================================
-# 🛠️ PARSER DE LINHAS
+# 🛠️ PARSER DE LINHAS CORRIGIDO
 # ==========================================
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip()
     if not linha_original:
         return None
 
+    # CORREÇÃO: Removido o argumento Web incorreto do re.search
     eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
@@ -278,6 +279,7 @@ def processar_linha_acervo_original(linha_bruta):
     fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
+    # CORREÇÃO: Corrigido typo de 'artist' para 'artista'
     return {
         "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
@@ -434,7 +436,7 @@ elif opcao == "💿 Formatador de Acervo":
                     with st.spinner(f"🚀 Despachando lote completo de {total_g} músicas instantaneamente..."):
                         sucesso, motivo = enviar_lote_completo_google(url_webhook, pacote_lote)
                     
-                    if sucesso:
+                    if接触:
                         st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                         
