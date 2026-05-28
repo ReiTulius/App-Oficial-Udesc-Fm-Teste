@@ -7,7 +7,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import datetime as dt
-from concurrent.futures import ThreadPoolExecutor  # ⚡ Importado para envio paralelo ultra-rápido
+from concurrent.futures import ThreadPoolExecutor  # ⚡ Envio paralelo ultra-rápido
 
 # ==========================================
 # 📻 CONFIGURAÇÃO DO PAINEL & CREDENCIAIS
@@ -166,7 +166,7 @@ def carregar_banco_instagram(url):
 
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip()
-    if not línea_original:
+    if not linha_original: # 🔍 CORRIGIDO: Removido o acento fantasma que travava o app!
         return None
 
     eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
@@ -296,7 +296,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO (SUPER TURBO PARALELO)
+# 💿 ABA: FORMATADOR DE ACERVO (SUPER VELOZ PARALELO)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -323,7 +323,6 @@ elif opcao == "💿 Formatador de Acervo":
             st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc) if lista_sc else pd.DataFrame()
             st.balloons()
 
-    # ⚡ SUB-FUNÇÃO AUXILIAR DE DISPARO PARALELO
     def disparar_requisicao(url, payload):
         try:
             requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
@@ -357,7 +356,6 @@ elif opcao == "💿 Formatador de Acervo":
                                 "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                             })
                         
-                        # 🚀 Dispara até 15 requisições simultâneas para o Google Scripts
                         with ThreadPoolExecutor(max_workers=15) as executor:
                             executor.map(lambda p: disparar_requisicao(url_webhook, p), payloads)
                     
@@ -390,7 +388,6 @@ elif opcao == "💿 Formatador de Acervo":
                                 "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
                             })
                         
-                        # 🚀 Dispara em paralelo para a planilha do Som da Ilha
                         with ThreadPoolExecutor(max_workers=15) as executor:
                             executor.map(lambda p: disparar_requisicao(WEBHOOK_SOM_DA_ILHA, p), payloads)
                                 
