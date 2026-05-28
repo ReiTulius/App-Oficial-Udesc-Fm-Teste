@@ -159,7 +159,7 @@ def carregar_banco_instagram(url):
 
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
-    if not línea_original:
+    if not linha_original:
         return None
         
     linha_limpa_fim = linha_original.lower()
@@ -276,7 +276,7 @@ if opcao == "🔍 Buscar no Acervo":
 # ==========================================
 # 📂 ABA: VER TODO O ACERVO
 # ==========================================
-elif opcao == "📂 Ver Todo o Acervo":
+elif opcao == "📂 Ver Todo O Acervo":
     st.title("📋 Visualização Geral do Acervo")
     filtro_banco = st.selectbox("Selecione qual acervo deseja analisar:", ["Todos os Acervos Juntos", "Apenas Túlio", "Apenas Jéssica", "Apenas Som da Ilha"])
     
