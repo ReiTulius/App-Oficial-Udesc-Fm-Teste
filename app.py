@@ -24,10 +24,10 @@ URL_TULIO_PRO = "https://docs.google.com/spreadsheets/d/16inPMqGCr50-MNJvwV1R4by
 URL_JESSICA_PRO = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7jFCYqH-U8Qbru5w5TDyAHQLw/edit?usp=sharing"
 
-# 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS (DO APP)
+# 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS CORRIGIDOS (DO APP)
 URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIZsCgNo/edit?usp=sharing"
-URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/export?format=csv"
-URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
+URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/edit?usp=sharing"
+URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/edit?usp=sharing"
 
 # 🚀 WEBHOOKS DE ESCRITA (LOTE COMPLETO)
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
@@ -84,9 +84,23 @@ Aviso automático do Painel de Controle Udesc FM."""
 # 🔄 LEITOR INTEGRADO DO ACERVO CORRIGIDO
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
-    # Correção do Cache Buster para aceitar URLs que já possuem parâmetros (?) ou não
-    conector = "&" if "?" in url else "?"
-    url_dinamica = f"{url}{conector}cachebuster={int(time.time())}"
+    # Tratamento dinâmico para extrair o ID e converter qualquer formato de URL para exportação CSV pura
+    try:
+        if "/d/" in url:
+            id_planilha = url.split("/d/")[1].split("/")[0]
+            # Se a URL original possuir uma aba específica (gid), nós mantemos ela, caso contrário exporta a principal
+            gid_part = ""
+            if "gid=" in url:
+                gid_part = "&gid=" + url.split("gid=")[1].split("&")[0]
+            url_base = f"https://docs.google.com/spreadsheets/d/{id_planilha}/export?format=csv{gid_part}"
+        else:
+            url_base = url
+    except:
+        url_base = url
+
+    # Cache Buster atualizado e robusto
+    conector = "&" if "?" in url_base else "?"
+    url_dinamica = f"{url_base}{conector}cachebuster={int(time.time())}"
     
     df = pd.DataFrame()
     erro_detalhado = None
@@ -202,7 +216,7 @@ def processar_linha_acervo_original(linha_bruta):
     if not linha_original:
         return None
 
-    eh_sc = bool(re.search(r'-\s*sc\b', Web = linha_original, flags=re.IGNORECASE))
+    eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
     linha_original = re.sub(r'\.(mp3|wav|mpeg|mp4|m4a|flac|aac|ogg)$', '', linha_original, flags=re.IGNORECASE).strip()
@@ -265,7 +279,7 @@ def processar_linha_acervo_original(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "Música": musica, "Artista": artist, "Compositores": compositores,
+        "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado,
@@ -338,7 +352,6 @@ if opcao == "🔍 Buscar no Acervo":
     # Painel das últimas cadastradas (Exibe as últimas 10 linhas inseridas no banco)
     if not termo and not df_total.empty:
         st.write("### 📅 Adicionadas Recentemente no Sistema:")
-        # Inverte a ordem do dataframe para exibir o que está no final (cadastros recentes) primeiro
         ultimas_cadastradas = df_total.tail(10).iloc[::-1]
         
         colunas_exibicao = [c for c in ["Nome do Arquivo", "Acervo Origem", "Data Cadastro"] if c in ultimas_cadastradas.columns]
