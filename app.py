@@ -3,11 +3,11 @@ import pandas as pd
 import re
 import smtplib
 import requests
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import datetime as dt
-from concurrent.futures import ThreadPoolExecutor  # ⚡ Envio paralelo ultra-rápido
 
 # ==========================================
 # 📻 CONFIGURAÇÃO DO PAINEL & CREDENCIAIS
@@ -166,7 +166,7 @@ def carregar_banco_instagram(url):
 
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip()
-    if not linha_original: # 🔍 CORRIGIDO: Removido o acento fantasma que travava o app!
+    if not linha_original:
         return None
 
     eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
@@ -239,6 +239,13 @@ def processar_linha_acervo_original(linha_bruta):
         "eh_sc": eh_sc
     }
 
+def enviar_requisicao_individual(url, payload):
+    try:
+        r = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+        return r.status_code == 200
+    except:
+        return False
+
 # --- INTERFACE DE NAVEGAÇÃO ---
 st.sidebar.title("Painel de Controle")
 if st.sidebar.button("🔄 Forçar Sincronização Completa", use_container_width=True):
@@ -296,7 +303,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO (SUPER VELOZ PARALELO)
+# 💿 ABA: FORMATADOR DE ACERVO (FILA INDIVIDUAL BLINDADA)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -323,12 +330,6 @@ elif opcao == "💿 Formatador de Acervo":
             st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc) if lista_sc else pd.DataFrame()
             st.balloons()
 
-    def disparar_requisicao(url, payload):
-        try:
-            requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
-        except:
-            pass
-
     if "lote_geral_atual" in st.session_state and not st.session_state["lote_geral_atual"].empty:
         st.success("🎉 Lote GERAL formatado com sucesso:")
         df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="edit_g_real")
@@ -343,24 +344,32 @@ elif opcao == "💿 Formatador de Acervo":
                     st.error("Por favor, digite seu nome.")
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
+                    total_g = len(df_editado_g)
                     
-                    with st.spinner("Gravando lote em paralelo ultra-rápido..."):
-                        payloads = []
-                        for _, r in df_editado_g.iterrows():
-                            payloads.append({
-                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
-                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
-                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
-                                "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
-                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
-                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                            })
-                        
-                        with ThreadPoolExecutor(max_workers=15) as executor:
-                            executor.map(lambda p: disparar_requisicao(url_webhook, p), payloads)
+                    # 🚀 Criação da barra de progresso visual para evitar travamento
+                    barra_progresso = st.progress(0)
+                    texto_status = st.empty()
                     
+                    for idx, (_, r) in enumerate(df_editado_g.iterrows()):
+                        payload = {
+                            "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                            "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                            "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                            "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
+                            "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                            "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                        }
+                        texto_status.write(f"⏳ Gravando música {idx+1} de {total_g}: **{r['Nome do Arquivo']}**")
+                        enviar_requisicao_individual(url_webhook, payload)
+                        barra_progresso.progress((idx + 1) / total_g)
+                    
+                    texto_status.write("📧 Enviando e-mail de notificação...")
                     enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
-                    st.success("🔥 Lote geral enviado de forma instantânea!")
+                    
+                    texto_status.write("🔄 Atualizando banco de dados do site automaticamente...")
+                    inicializar_acervos(forcar_recarga=True)
+                    
+                    st.success(f"🔥 Sucesso! Todas as {total_g} músicas foram salvas nas linhas certas e o site foi atualizado!")
                     st.session_state["lote_geral_atual"] = pd.DataFrame()
                     st.rerun()
 
@@ -376,23 +385,30 @@ elif opcao == "💿 Formatador de Acervo":
                 if not u_nome_s.strip():
                     st.error("Por favor, digite seu nome.")
                 else:
-                    with st.spinner("Gravando lote no Som da Ilha em paralelo ultra-rápido..."):
-                        payloads = []
-                        for _, r in df_editado_s.iterrows():
-                            payloads.append({
-                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
-                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
-                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
-                                "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
-                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
-                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                            })
-                        
-                        with ThreadPoolExecutor(max_workers=15) as executor:
-                            executor.map(lambda p: disparar_requisicao(WEBHOOK_SOM_DA_ILHA, p), payloads)
+                    total_s = len(df_editado_s)
+                    barra_progresso_s = st.progress(0)
+                    texto_status_s = st.empty()
+                    
+                    for idx, (_, r) in enumerate(df_editado_s.iterrows()):
+                        payload = {
+                            "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                            "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                            "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                            "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
+                            "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                            "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                        }
+                        texto_status_s.write(f"⏳ Gravando no Som da Ilha {idx+1} de {total_s}: **{r['Nome do Arquivo']}**")
+                        enviar_requisicao_individual(WEBHOOK_SOM_DA_ILHA, payload)
+                        barra_progresso_s.progress((idx + 1) / total_s)
                                 
+                    texto_status_s.write("📧 Enviando e-mail de notificação...")
                     enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
-                    st.success("🔥 Lote Som da Ilha gravado de forma instantânea!")
+                    
+                    texto_status_s.write("🔄 Atualizando banco de dados do site automaticamente...")
+                    inicializar_acervos(forcar_recarga=True)
+                    
+                    st.success(f"🔥 Sucesso! Todas as {total_s} músicas do Som da Ilha foram salvas nas linhas certas e o site foi atualizado!")
                     st.session_state["lote_sc_atual"] = pd.DataFrame()
                     st.rerun()
 
