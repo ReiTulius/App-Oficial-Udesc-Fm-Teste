@@ -59,7 +59,7 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         
         corpo = f"""Olá Túlio,
 
-Um novo lote de músicas foi processado e saved na planilha!
+Um novo lote de músicas foi processado e salvo na planilha!
 
 👤 QUEM CADASTROU: {nome_usuario}
 📍 DESTINO DO LOTE: {nome_acervo}
@@ -84,8 +84,10 @@ Aviso automático do Painel de Controle Udesc FM."""
 # 🔄 LEITOR INTEGRADO DO ACERVO CORRIGIDO
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
-    # Cache Buster: Força o Google Sheets a ignorar o cache antigo e entregar dados novos
-    url_dinamica = f"{url}&cachebuster={int(time.time())}"
+    # Correção do Cache Buster para aceitar URLs que já possuem parâmetros (?) ou não
+    conector = "&" if "?" in url else "?"
+    url_dinamica = f"{url}{conector}cachebuster={int(time.time())}"
+    
     df = pd.DataFrame()
     erro_detalhado = None
     
@@ -101,7 +103,7 @@ def puxar_dados_do_google(url, nome_acervo):
         df.dropna(how='all', inplace=True)
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Dicionário de padronização inteligente de cabeçalhos
+        # Dicionário de padronização de cabeçalhos
         mapeamento = {
             "musica": "Música", "música": "Música", "artista": "Artista",
             "compositores": "Compositores", "compositor": "Compositores",
@@ -128,7 +130,7 @@ def puxar_dados_do_google(url, nome_acervo):
         return df
     else:
         if erro_detalhado:
-            st.sidebar.error(f"⚠️ Erro ao ler '{nome_acervo}'. Verifique o compartilhamento público da planilha!\nDetalhes: {erro_detalhado}")
+            st.sidebar.error(f"⚠️ Erro ao ler '{nome_acervo}'.\nDetalhes: {erro_detalhado}")
     return pd.DataFrame()
 
 def inicializar_acervos(forcar_recarga=False):
@@ -200,7 +202,7 @@ def processar_linha_acervo_original(linha_bruta):
     if not linha_original:
         return None
 
-    eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
+    eh_sc = bool(re.search(r'-\s*sc\b', Web = linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
     linha_original = re.sub(r'\.(mp3|wav|mpeg|mp4|m4a|flac|aac|ogg)$', '', linha_original, flags=re.IGNORECASE).strip()
@@ -263,7 +265,7 @@ def processar_linha_acervo_original(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "Música": musica, "Artista": artista, "Compositores": compositores,
+        "Música": musica, "Artista": artist, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado,
@@ -295,12 +297,27 @@ st.sidebar.markdown("---")
 st.sidebar.caption("Udesc FM 🎧")
 
 # ==========================================
-# 🔍 ABA: BUSCAR NO ACERVO
+# 🔍 ABA: BUSCAR NO ACERVO (COM METRICAS)
 # ==========================================
 if opcao == "🔍 Buscar no Acervo":
     st.title("🔍 Acervo Oficial Integrado - Udesc FM")
     df_total = st.session_state["banco_completo"]
     
+    # Seção de Métricas Visuais na Página Inicial
+    if not df_total.empty:
+        total_musicas = len(df_total)
+        total_sc = len(df_total[df_total["Acervo Origem"] == "Som da Ilha"])
+        total_tulio = len(df_total[df_total["Acervo Origem"] == "Túlio"])
+        total_jessica = len(df_total[df_total["Acervo Origem"] == "Jéssica"])
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("📊 Total no Site", f"{total_musicas} mscs")
+        col2.metric("🏝️ Som da Ilha", f"{total_sc}")
+        col3.metric("🎙️ Banco Túlio", f"{total_tulio}")
+        col4.metric("🎙️ Banco Jéssica", f"{total_jessica}")
+        
+        st.markdown("---")
+
     st.write("Digite o artista, nome da música ou nome do arquivo:")
     termo = st.text_input("", label_visibility="collapsed")
     
@@ -317,6 +334,15 @@ if opcao == "🔍 Buscar no Acervo":
             st.dataframe(resultados, use_container_width=True)
         else:
             st.error("Nenhuma música encontrada.")
+            
+    # Painel das últimas cadastradas (Exibe as últimas 10 linhas inseridas no banco)
+    if not termo and not df_total.empty:
+        st.write("### 📅 Adicionadas Recentemente no Sistema:")
+        # Inverte a ordem do dataframe para exibir o que está no final (cadastros recentes) primeiro
+        ultimas_cadastradas = df_total.tail(10).iloc[::-1]
+        
+        colunas_exibicao = [c for c in ["Nome do Arquivo", "Acervo Origem", "Data Cadastro"] if c in ultimas_cadastradas.columns]
+        st.dataframe(ultimas_cadastradas[colunas_exibicao], use_container_width=True, hide_index=True)
 
 # ==========================================
 # 📂 ABA: VER TODO O ACERVO
