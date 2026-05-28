@@ -59,7 +59,7 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         
         corpo = f"""Olá Túlio,
 
-Um novo lote de músicas foi processado e salvo na planilha!
+Um novo lote de músicas foi processado e saved na planilha!
 
 👤 QUEM CADASTROU: {nome_usuario}
 📍 DESTINO DO LOTE: {nome_acervo}
@@ -81,31 +81,59 @@ Aviso automático do Painel de Controle Udesc FM."""
         pass
 
 # ==========================================
-# 🔄 LEITOR INTEGRADO DO ACERVO
+# 🔄 LEITOR INTEGRADO DO ACERVO CORRIGIDO
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
+    # Cache Buster: Força o Google Sheets a ignorar o cache antigo e entregar dados novos
+    url_dinamica = f"{url}&cachebuster={int(time.time())}"
+    df = pd.DataFrame()
+    erro_detalhado = None
+    
     try:
-        df = pd.read_csv(url, sep=',', on_bad_lines='skip', encoding='utf-8')
-        if not df.empty:
-            df.dropna(how='all', inplace=True)
-            df.columns = [str(c).strip() for c in df.columns]
-            df["Acervo Origem"] = nome_acervo
-            return df
-    except:
+        df = pd.read_csv(url_dinamica, sep=',', on_bad_lines='skip', encoding='utf-8')
+    except Exception as e1:
         try:
-            df = pd.read_csv(url, sep=',', on_bad_lines='skip', encoding='latin1')
-            if not df.empty:
-                df.dropna(how='all', inplace=True)
-                df.columns = [str(c).strip() for c in df.columns]
-                df["Acervo Origem"] = nome_acervo
-                return df
-        except:
-            pass
+            df = pd.read_csv(url_dinamica, sep=',', on_bad_lines='skip', encoding='latin1')
+        except Exception as e2:
+            erro_detalhado = f"Erro UTF-8: {e1} | Erro Latin1: {e2}"
+            
+    if not df.empty:
+        df.dropna(how='all', inplace=True)
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        # Dicionário de padronização inteligente de cabeçalhos
+        mapeamento = {
+            "musica": "Música", "música": "Música", "artista": "Artista",
+            "compositores": "Compositores", "compositor": "Compositores",
+            "formato": "Formato", "ano": "Ano", "origem": "Origem",
+            "genero": "Gênero", "gênero": "Gênero",
+            "genero relacionado": "Gênero Relacionado", "gênero relacionado": "Gênero Relacionado",
+            "est/idioma": "Est/Idioma", "idioma": "Est/Idioma", "est": "Est/Idioma",
+            "classificacao": "Classificação", "classificação": "Classificação",
+            "andamento": "Andamento", "data cadastro": "Data Cadastro", "data_cadastro": "Data Cadastro",
+            "participacoes": "Participações", "participações": "Participações",
+            "nome do arquivo": "Nome do Arquivo", "nome_arquivo": "Nome do Arquivo"
+        }
+        
+        novas_colunas = []
+        for col in df.columns:
+            col_lower = col.lower().strip()
+            if col_lower in mapeamento:
+                novas_colunas.append(mapeamento[col_lower])
+            else:
+                novas_colunas.append(col)
+        df.columns = novas_colunas
+        
+        df["Acervo Origem"] = nome_acervo
+        return df
+    else:
+        if erro_detalhado:
+            st.sidebar.error(f"⚠️ Erro ao ler '{nome_acervo}'. Verifique o compartilhamento público da planilha!\nDetalhes: {erro_detalhado}")
     return pd.DataFrame()
 
 def inicializar_acervos(forcar_recarga=False):
     if "banco_completo" not in st.session_state or forcar_recarga:
-        with st.spinner("Sincronizando acervos completos..."):
+        with st.spinner("Sincronizando acervos em tempo real..."):
             df_som_pro = puxar_dados_do_google(URL_SOM_DA_ILHA_PRO, "Som da Ilha")
             df_tulio_pro = puxar_dados_do_google(URL_TULIO_PRO, "Túlio")
             df_jessica_pro = puxar_dados_do_google(URL_JESSICA_PRO, "Jéssica")
@@ -131,7 +159,7 @@ def inicializar_acervos(forcar_recarga=False):
                         df_unificado.loc[mask_vazio, "Artista"].astype(str) + " - " + df_unificado.loc[mask_vazio, "Música"].astype(str)
                     )
                 
-                df_unificado.drop_duplicates(keep="first", inplace=True)
+                df_unificado.drop_duplicates(subset=["Nome do Arquivo"], keep="first", inplace=True)
                 st.session_state["banco_completo"] = df_unificado
             else:
                 st.session_state["banco_completo"] = pd.DataFrame()
@@ -165,7 +193,7 @@ def carregar_banco_instagram(url):
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
 # ==========================================
-# 🛠️ PARSER CORRIGIDO (SEM ERROS DE SINTAXE)
+# 🛠️ PARSER DE LINHAS
 # ==========================================
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip()
@@ -371,12 +399,12 @@ elif opcao == "💿 Formatador de Acervo":
                         st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                         
-                        st.write("🔄 Atualizando buscador do site automaticamente...")
+                        st.write("🔄 Sincronizando e quebrando cache do Google...")
                         inicializar_acervos(forcar_recarga=True)
                         
                         st.success(f"🔥 Sucesso total! As {total_g} músicas foram salvas em bloco e o site já está atualizado!")
                         st.session_state["lote_geral_atual"] = pd.DataFrame()
-                        time.sleep(1.5)
+                        time.sleep(1.0)
                         st.rerun()
                     else:
                         st.error(f"❌ Falha no envio em bloco: {motivo}")
@@ -413,12 +441,12 @@ elif opcao == "💿 Formatador de Acervo":
                         st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
                         
-                        st.write("🔄 Atualizando buscador do site automaticamente...")
+                        st.write("🔄 Sincronizando e quebrando cache do Google...")
                         inicializar_acervos(forcar_recarga=True)
                         
                         st.success(f"🔥 Sucesso total! As {total_s} músicas do Som da Ilha foram salvas e integradas!")
                         st.session_state["lote_sc_atual"] = pd.DataFrame()
-                        time.sleep(1.5)
+                        time.sleep(1.0)
                         st.rerun()
                     else:
                         st.error(f"❌ Falha no envio em bloco (Som da Ilha): {motivo}")
