@@ -165,11 +165,11 @@ def carregar_banco_instagram(url):
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
 def processar_linha_acervo_original(linha_bruta):
-    linha_original = linha_bruta.strip()
+    linha_original = Self = linha_bruta.strip()
     if not linha_original:
         return None
 
-    eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
+    eh_sc = bool(re.search(r'-\s*sc\b', Web = linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
     linha_original = re.sub(r'\.(mp3|wav|mpeg|mp4|m4a|flac|aac|ogg)$', '', linha_original, flags=re.IGNORECASE).strip()
@@ -239,22 +239,17 @@ def processar_linha_acervo_original(linha_bruta):
         "eh_sc": eh_sc
     }
 
-def enviar_requisicao_individual(url, payload):
-    """
-    Função com checagem real de integridade da resposta do Google Sheets.
-    Retorna (True, 'OK') se salvou ou (False, 'Motivo') se falhou.
-    """
+def enviar_lote_completo_google(url, pacote_json):
+    """ Envia TODAS as músicas em uma única requisição HTTP POST ultrarrápida """
     try:
-        r = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+        r = requests.post(url, json=pacote_json, headers={"Content-Type": "application/json"}, timeout=30)
         if r.status_code == 200:
-            # O Google às vezes retorna 200 mas com uma página HTML de erro interno
-            if "error" in r.text.lower() or "script error" in r.text.lower():
-                return False, f"Erro interno do Script do Google: {r.text[:80]}"
+            if "error" in r.text.lower():
+                return False, f"Google processou com erro interno: {r.text[:100]}"
             return True, "OK"
-        else:
-            return False, f"Servidor do Google recusou (Código HTTP {r.status_code})"
+        return False, f"Google rejeitou o bloco inteiro (Código HTTP {r.status_code})"
     except Exception as e:
-        return False, f"Falha de conexão com a planilha: {str(e)}"
+        return False, f"Falha crítica de conexão: {str(e)}"
 
 # --- INTERFACE DE NAVEGAÇÃO ---
 st.sidebar.title("Painel de Controle")
@@ -313,7 +308,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO (FILA TRANSPARENTE SEM MENTIRAS)
+# 💿 ABA: FORMATADOR DE ACERVO (BULK UPLOAD EM 2 SEGUNDOS)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -356,59 +351,34 @@ elif opcao == "💿 Formatador de Acervo":
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     total_g = len(df_editado_g)
                     
-                    barra_progresso = st.progress(0)
-                    texto_status = st.empty()
-                    painel_metricas = st.empty()
-                    
-                    lote_sucessos = 0
-                    lote_falhas = 0
-                    lista_erros_detalhados = []
-                    
-                    for idx, (_, r) in enumerate(df_editado_g.iterrows()):
-                        payload = {
+                    # Monta o pacote com o lote inteiro de registros
+                    pacote_lote = []
+                    for _, r in df_editado_g.iterrows():
+                        pacote_lote.append({
                             "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
                             "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
                             "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
                             "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
                             "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
                             "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                        }
-                        
-                        texto_status.write(f"⏳ Processando {idx+1} de {total_g}: **{r['Nome do Arquivo']}**")
-                        
-                        # 🛡️ Validação em tempo real do Google Sheets
-                        sucesso, motivo = enviar_requisicao_individual(url_webhook, payload)
-                        
-                        if sucesso:
-                            lote_sucessos += 1
-                        else:
-                            lote_falhas += 1
-                            lista_erros_detalhados.append(f"❌ '{r['Nome do Arquivo']}' -> {motivo}")
-                        
-                        # Atualiza placar real na tela
-                        painel_metricas.markdown(f"### Status Real do Lote:  ✅ Gravadas: `{lote_sucessos}`  |  ❌ Rejeitadas pelo Google: `{lote_falhas}`")
-                        barra_progresso.progress((idx + 1) / total_g)
-                        
-                        # ⏱️ Pausa inteligente antibloqueio do Google
-                        time.sleep(0.6)
+                        })
                     
-                    if lote_falhas > 0:
-                        st.error(f"Atenção: O Google barrou {lote_falhas} músicas deste lote!")
-                        with st.expander("Ver relatório de rejeição do Google"):
-                            for erro in lista_erros_detalhados:
-                                st.write(erro)
+                    with st.spinner(f"🚀 Despachando lote completo de {total_g} músicas instantaneamente..."):
+                        sucesso, motivo = enviar_lote_completo_google(url_webhook, pacote_lote)
                     
-                    if lote_sucessos > 0:
-                        texto_status.write("📧 Enviando e-mail de notificação...")
+                    if sucesso:
+                        st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
                         
-                        texto_status.write("🔄 Atualizando banco de dados do site automaticamente...")
+                        st.write("🔄 Atualizando buscador do site automaticamente...")
                         inicializar_acervos(forcar_recarga=True)
                         
-                        st.success(f"🔥 Processo concluído! {lote_sucessos} músicas foram devidamente consolidadas e o buscador do site já está atualizado!")
+                        st.success(f"🔥 Sucesso total! As {total_g} músicas foram salvas em bloco e o site já está atualizado!")
                         st.session_state["lote_geral_atual"] = pd.DataFrame()
-                        time.sleep(2)
+                        time.sleep(1.5)
                         st.rerun()
+                    else:
+                        st.error(f"❌ Falha no envio em bloco: {motivo}")
 
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
         st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
@@ -423,56 +393,34 @@ elif opcao == "💿 Formatador de Acervo":
                     st.error("Por favor, digite seu nome.")
                 else:
                     total_s = len(df_editado_s)
-                    barra_progresso_s = st.progress(0)
-                    texto_status_s = st.empty()
-                    painel_metricas_s = st.empty()
                     
-                    lote_sucessos_s = 0
-                    lote_falhas_s = 0
-                    lista_erros_s = []
-                    
-                    for idx, (_, r) in enumerate(df_editado_s.iterrows()):
-                        payload = {
+                    pacote_lote_s = []
+                    for _, r in df_editado_s.iterrows():
+                        pacote_lote_s.append({
                             "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
                             "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
                             "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
                             "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
                             "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
                             "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                        }
-                        
-                        texto_status_s.write(f"⏳ Processando Som da Ilha {idx+1} de {total_s}: **{r['Nome do Arquivo']}**")
-                        
-                        sucesso, motivo = enviar_requisicao_individual(WEBHOOK_SOM_DA_ILHA, payload)
-                        
-                        if sucesso:
-                            lote_sucessos_s += 1
-                        else:
-                            lote_falhas_s += 1
-                            lista_erros_s.append(f"❌ '{r['Nome do Arquivo']}' -> {motivo}")
-                        
-                        painel_metricas_s.markdown(f"### Status Som da Ilha:  ✅ Gravadas: `{lote_sucessos_s}`  |  ❌ Rejeitadas: `{lote_falhas_s}`")
-                        barra_progresso_s.progress((idx + 1) / total_s)
-                        
-                        time.sleep(0.6)
+                        })
                     
-                    if lote_falhas_s > 0:
-                        st.error(f"O Google barrou {lote_falhas_s} músicas do Som da Ilha.")
-                        with st.expander("Ver relatório de erros"):
-                            for erro in lista_erros_s:
-                                st.write(erro)
+                    with st.spinner(f"🚀 Despachando lote Som da Ilha de {total_s} músicas instantaneamente..."):
+                        sucesso, motivo = enviar_lote_completo_google(WEBHOOK_SOM_DA_ILHA, pacote_lote_s)
                                 
-                    if lote_sucessos_s > 0:
-                        texto_status_s.write("📧 Enviando e-mail de notificação...")
+                    if sucesso:
+                        st.write("📧 Enviando e-mail de notificação...")
                         enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
                         
-                        texto_status_s.write("🔄 Atualizando banco de dados do site automaticamente...")
+                        st.write("🔄 Atualizando buscador do site automaticamente...")
                         inicializar_acervos(forcar_recarga=True)
                         
-                        st.success(f"🔥 Sucesso real! {lote_sucessos_s} faixas salvas sem erros e integradas ao acervo!")
+                        st.success(f"🔥 Sucesso total! As {total_s} músicas do Som da Ilha foram salvas e integradas!")
                         st.session_state["lote_sc_atual"] = pd.DataFrame()
-                        time.sleep(2)
+                        time.sleep(1.5)
                         st.rerun()
+                    else:
+                        st.error(f"❌ Falha no envio em bloco (Som da Ilha): {motivo}")
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
