@@ -158,18 +158,19 @@ def carregar_banco_instagram(url):
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
 def processar_linha_acervo_original(linha_bruta):
-    linha_original = linha_bruta.strip().replace('"', '')
+    linha_original = linha_bruta.strip()
     if not linha_original:
         return None
-        
-    linha_limpa_fim = linha_original.lower()
-    if linha_limpa_fim.endswith(".mp3"):
-        linha_original = linha_original[:-4].strip()
-        
-    eh_sc = False
-    if linha_limpa_fim.endswith("- sc") or linha_limpa_fim.endswith("-sc"):
-        eh_sc = True
-        linha_original = re.sub(r'\s*-\s*sc\s*$', '', linha_original, flags=re.IGNORECASE).strip()
+
+    # Detecta se existe a marcação - SC ou -SC em qualquer parte final da linha (mesmo com aspas ou extensões)
+    eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
+
+    # Limpeza profunda: remove aspas e extensões comuns de áudio (.mp3, .wav, .mpeg, .flac, etc)
+    linha_original = linha_original.replace('"', '')
+    linha_original = re.sub(r'\.(mp3|wav|mpeg|mp4|m4a|flac|aac|ogg)$', '', linha_original, flags=re.IGNORECASE).strip()
+    
+    # Remove a marcação de SC do texto bruto para não duplicar no processamento de colunas
+    linha_original = re.sub(r'\s*-\s*sc\s*$', '', linha_original, flags=re.IGNORECASE).strip()
         
     if "\\" in linha_original:
         linha_trabalho = linha_original.split("\\")[-1]
@@ -262,7 +263,6 @@ if opcao == "🔍 Buscar no Acervo":
         termo_lower = termo.lower().strip()
         mascara = pd.Series(False, index=df_total.index)
         
-        # Sistema Avançado de busca case-insensitive à prova de falhas
         for col in df_total.columns:
             if col != "Acervo Origem":
                 mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
@@ -276,7 +276,7 @@ if opcao == "🔍 Buscar no Acervo":
 # ==========================================
 # 📂 ABA: VER TODO O ACERVO
 # ==========================================
-elif opcao == "📂 Ver Todo O Acervo":
+elif opcao == "📂 Ver Todo o Acervo":
     st.title("📋 Visualização Geral do Acervo")
     filtro_banco = st.selectbox("Selecione qual acervo deseja analisar:", ["Todos os Acervos Juntos", "Apenas Túlio", "Apenas Jéssica", "Apenas Som da Ilha"])
     
@@ -316,8 +316,8 @@ elif opcao == "💿 Formatador de Acervo":
                     else:
                         lista_geral.append(res)
             
-            if lista_geral: st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral)
-            if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
+            st.session_state["lote_geral_atual"] = pd.DataFrame(lista_geral) if lista_geral else pd.DataFrame()
+            st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc) if lista_sc else pd.DataFrame()
             st.balloons()
 
     if "lote_geral_atual" in st.session_state and not st.session_state["lote_geral_atual"].empty:
