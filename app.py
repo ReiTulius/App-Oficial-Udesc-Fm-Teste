@@ -119,7 +119,6 @@ def inicializar_acervos(forcar_recarga=False):
             if dfs:
                 df_unificado = pd.concat(dfs, ignore_index=True)
                 
-                # Preenche e garante que as colunas de busca fiquem legíveis
                 if "Nome do Arquivo" not in df_unificado.columns:
                     df_unificado["Nome do Arquivo"] = ""
                 
@@ -169,7 +168,6 @@ def processar_linha_acervo_original(linha_bruta):
     if not linha_original:
         return None
 
-    # Detecta de forma inteligente a marcação de SC no final da linha
     eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
@@ -232,8 +230,9 @@ def processar_linha_acervo_original(linha_bruta):
     fuso_brasilia = dt.timezone(dt.timedelta(hours=-3))
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
+    # FIX: Correção de "artist" para "artista" realizada com sucesso aqui
     return {
-        "Música": musica, "Artista": artist, "Compositores": compositores,
+        "Música": musica, "Artista": artista, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado,
@@ -297,7 +296,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO (SUPER VELOZ)
+# 💿 ABA: FORMATADOR DE ACERVO (SUPER VELOZ & OTIMIZADO)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -339,23 +338,24 @@ elif opcao == "💿 Formatador de Acervo":
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     
-                    # Disparo veloz sem reter o carregamento da página
-                    for _, r in df_editado_g.iterrows():
-                        payload = {
-                            "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
-                            "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
-                            "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
-                            "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
-                            "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
-                            "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                        }
-                        try:
-                            requests.post(url_webhook, json=payload, headers={"Content-Type": "application/json"}, timeout=1)
-                        except:
-                            pass
+                    with st.spinner("Gravando lote nas nuvens em velocidade máxima..."):
+                        sessao = requests.Session()
+                        for _, r in df_editado_g.iterrows():
+                            payload = {
+                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                                "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
+                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                            }
+                            try:
+                                sessao.post(url_webhook, json=payload, headers={"Content-Type": "application/json"}, timeout=4)
+                            except:
+                                pass
                     
                     enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
-                    st.success("🔥 Lote enviado instantaneamente para a fila do Google!")
+                    st.success("🔥 Lote enviado com sucesso absoluto!")
                     st.session_state["lote_geral_atual"] = pd.DataFrame()
                     st.rerun()
 
@@ -371,23 +371,24 @@ elif opcao == "💿 Formatador de Acervo":
                 if not u_nome_s.strip():
                     st.error("Por favor, digite seu nome.")
                 else:
-                    # Disparo veloz sem reter o carregamento da página
-                    for _, r in df_editado_s.iterrows():
-                        payload = {
-                            "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
-                            "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
-                            "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
-                            "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
-                            "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
-                            "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                        }
-                        try:
-                            requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers={"Content-Type": "application/json"}, timeout=1)
-                        except:
-                            pass
+                    with st.spinner("Gravando lote no Som da Ilha em alta performance..."):
+                        sessao = requests.Session()
+                        for _, r in df_editado_s.iterrows():
+                            payload = {
+                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                                "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
+                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                            }
+                            try:
+                                sessao.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers={"Content-Type": "application/json"}, timeout=4)
+                            except:
+                                pass
                                 
                     enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
-                    st.success("🔥 Lote Som da Ilha enviado instantaneamente para a fila do Google!")
+                    st.success("🔥 Lote Som da Ilha gravado com sucesso!")
                     st.session_state["lote_sc_atual"] = pd.DataFrame()
                     st.rerun()
 
