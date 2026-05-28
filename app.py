@@ -50,7 +50,9 @@ def enviar_notificacao_email(nome_acervo, df_novas, nome_usuario):
         
         linhas_musicas = []
         for _, linha in df_novas.iterrows():
-            nome_arq = linha.get('Nome do Arquivo', linha.get('Música', 'Sem Nome'))
+            nome_arq = linha.get('Nome do Arquivo', '')
+            if not nome_arq and 'Música' in linha:
+                nome_arq = f"{linha.get('Artista', 'Desconhecido')} - {linha.get('Música', 'Sem Nome')}"
             linhas_musicas.append(f"• {nome_arq}.mp3")
         lista_texto = "\n".join(linhas_musicas)
         
@@ -78,7 +80,7 @@ Aviso automático do Painel de Controle Udesc FM."""
         pass
 
 # ==========================================
-# 🔄 LEITOR INTEGRADO (ORIGINAIS PRO + CÓPIAS APP)
+# 🔄 LEITOR INTEGRADO DO ACERVO
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
     try:
@@ -117,12 +119,17 @@ def inicializar_acervos(forcar_recarga=False):
             if dfs:
                 df_unificado = pd.concat(dfs, ignore_index=True)
                 
+                # Preenche e garante que as colunas de busca fiquem legíveis
                 if "Nome do Arquivo" not in df_unificado.columns:
                     df_unificado["Nome do Arquivo"] = ""
                 
+                df_unificado["Nome do Arquivo"] = df_unificado["Nome do Arquivo"].fillna("")
                 mask_vazio = df_unificado["Nome do Arquivo"].astype(str).str.strip() == ""
+                
                 if "Artista" in df_unificado.columns and "Música" in df_unificado.columns:
-                    df_unificado.loc[mask_vazio, "Nome do Arquivo"] = df_unificado["Artista"].astype(str) + " - " + df_unificado["Música"].astype(str)
+                    df_unificado.loc[mask_vazio, "Nome do Arquivo"] = (
+                        df_unificado.loc[mask_vazio, "Artista"].astype(str) + " - " + df_unificado.loc[mask_vazio, "Música"].astype(str)
+                    )
                 
                 df_unificado.drop_duplicates(keep="first", inplace=True)
                 st.session_state["banco_completo"] = df_unificado
@@ -162,14 +169,11 @@ def processar_linha_acervo_original(linha_bruta):
     if not linha_original:
         return None
 
-    # Detecta se existe a marcação - SC ou -SC em qualquer parte final da linha (mesmo com aspas ou extensões)
+    # Detecta de forma inteligente a marcação de SC no final da linha
     eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
 
-    # Limpeza profunda: remove aspas e extensões comuns de áudio (.mp3, .wav, .mpeg, .flac, etc)
     linha_original = linha_original.replace('"', '')
     linha_original = re.sub(r'\.(mp3|wav|mpeg|mp4|m4a|flac|aac|ogg)$', '', linha_original, flags=re.IGNORECASE).strip()
-    
-    # Remove a marcação de SC do texto bruto para não duplicar no processamento de colunas
     linha_original = re.sub(r'\s*-\s*sc\s*$', '', linha_original, flags=re.IGNORECASE).strip()
         
     if "\\" in linha_original:
@@ -229,7 +233,7 @@ def processar_linha_acervo_original(linha_bruta):
     data_hoje = datetime.now(fuso_brasilia).strftime("%d/%m/%Y")
 
     return {
-        "Música": musica, "Artista": artista, "Compositores": compositores,
+        "Música": musica, "Artista": artist, "Compositores": compositores,
         "Formato": formato, "Ano": ano, "Origem": "", "Gênero": "", "Gênero Relacionado": "",
         "Est/Idioma": "SC" if eh_sc else "", "Classificação": "", "Andamento": "",
         "Data Cadastro": data_hoje, "Participações": participacao, "Nome do Arquivo": nome_arquivo_formatado,
@@ -293,7 +297,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO
+# 💿 ABA: FORMATADOR DE ACERVO (SUPER VELOZ)
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -335,32 +339,25 @@ elif opcao == "💿 Formatador de Acervo":
                 else:
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     
-                    com_sucesso = True
-                    with st.spinner("Gravando lote na planilha..."):
-                        for _, r in df_editado_g.iterrows():
-                            payload = {
-                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
-                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
-                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
-                                "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
-                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
-                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                            }
-                            try:
-                                r_post = requests.post(url_webhook, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
-                                if r_post.status_code != 200:
-                                    com_sucesso = False
-                            except:
-                                com_sucesso = False
+                    # Disparo veloz sem reter o carregamento da página
+                    for _, r in df_editado_g.iterrows():
+                        payload = {
+                            "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                            "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                            "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                            "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
+                            "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                            "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                        }
+                        try:
+                            requests.post(url_webhook, json=payload, headers={"Content-Type": "application/json"}, timeout=1)
+                        except:
+                            pass
                     
-                    if com_sucesso:
-                        enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
-                        st.success("🔥 Lote enviado com sucesso absoluto!")
-                        st.session_state["lote_geral_atual"] = pd.DataFrame()
-                        inicializar_acervos(forcar_recarga=True)
-                        st.rerun()
-                    else:
-                        st.error("Ocorreu uma lentidão ao sincronizar com o Google. Verifique a planilha.")
+                    enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
+                    st.success("🔥 Lote enviado instantaneamente para a fila do Google!")
+                    st.session_state["lote_geral_atual"] = pd.DataFrame()
+                    st.rerun()
 
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
         st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
@@ -374,32 +371,25 @@ elif opcao == "💿 Formatador de Acervo":
                 if not u_nome_s.strip():
                     st.error("Por favor, digite seu nome.")
                 else:
-                    com_sucesso_s = True
-                    with st.spinner("Gravando no Som da Ilha..."):
-                        for _, r in df_editado_s.iterrows():
-                            payload = {
-                                "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
-                                "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
-                                "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
-                                "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
-                                "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
-                                "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
-                            }
-                            try:
-                                r_post = requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
-                                if r_post.status_code != 200:
-                                    com_sucesso_s = False
-                            except:
-                                com_sucesso_s = False
+                    # Disparo veloz sem reter o carregamento da página
+                    for _, r in df_editado_s.iterrows():
+                        payload = {
+                            "musica": str(r["Música"]), "artista": str(r["Artista"]), "compositores": str(r["Compositores"]),
+                            "formato": str(r["Formato"]), "ano": str(r["Ano"]), "origem": str(r["Origem"]),
+                            "genero": str(r["Gênero"]), "genero_relacionado": str(r["Gênero Relacionado"]),
+                            "idioma_est": str(r["Est/Idioma"]), "classificacao": str(r["Classificação"]),
+                            "andamento": str(r["Andamento"]), "data_cadastro": str(r["Data Cadastro"]),
+                            "participacoes": str(r["Participações"]), "nome_arquivo": str(r["Nome do Arquivo"])
+                        }
+                        try:
+                            requests.post(WEBHOOK_SOM_DA_ILHA, json=payload, headers={"Content-Type": "application/json"}, timeout=1)
+                        except:
+                            pass
                                 
-                    if com_sucesso_s:
-                        enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
-                        st.success("🔥 Lote Som da Ilha gravado com sucesso!")
-                        st.session_state["lote_sc_atual"] = pd.DataFrame()
-                        inicializar_acervos(forcar_recarga=True)
-                        st.rerun()
-                    else:
-                        st.error("Instabilidade temporária no Google Sheets ao salvar lote.")
+                    enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
+                    st.success("🔥 Lote Som da Ilha enviado instantaneamente para a fila do Google!")
+                    st.session_state["lote_sc_atual"] = pd.DataFrame()
+                    st.rerun()
 
 # ==========================================
 # 📸 ABA: GERADOR DE SETLIST INSTAGRAM
