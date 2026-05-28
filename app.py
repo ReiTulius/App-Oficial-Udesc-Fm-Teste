@@ -29,7 +29,7 @@ URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG2
 URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/export?format=csv"
 URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 
-# 🚀 WEBHOOKS DE ESCRITA
+# 🚀 WEBHOOKS DE ESCRITA (LOTE COMPLETO)
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
 WEBHOOK_TULIO = "https://script.google.com/macros/s/AKfycbxR5g2pWU_2_ClapUxY5PWCnH-C9NBrmiT8F1wf0GoLm2KV9jAmMlOQLSGdWsLHNzqX/exec"
 WEBHOOK_JESSICA = "https://script.google.com/macros/s/AKfycbGif0xdjbzvo82mvG1CnrKwt8jvp-OWwHCFv3_FTQNJtGxT7m15hZGeO3k7ryWl3E9uQ/exec"
@@ -164,12 +164,15 @@ def carregar_banco_instagram(url):
     except Exception as e:
         return {}, f"Erro ao conectar com o Google Drive: {e}"
 
+# ==========================================
+# 🛠️ PARSER CORRIGIDO (SEM ERROS DE SINTAXE)
+# ==========================================
 def processar_linha_acervo_original(linha_bruta):
-    linha_original = Self = linha_bruta.strip()
+    linha_original = linha_bruta.strip()
     if not linha_original:
         return None
 
-    eh_sc = bool(re.search(r'-\s*sc\b', Web = linha_original, flags=re.IGNORECASE))
+    eh_sc = bool(re.search(r'-\s*sc\b', linha_original, flags=re.IGNORECASE))
 
     linha_original = linha_original.replace('"', '')
     linha_original = re.sub(r'\.(mp3|wav|mpeg|mp4|m4a|flac|aac|ogg)$', '', linha_original, flags=re.IGNORECASE).strip()
@@ -240,7 +243,6 @@ def processar_linha_acervo_original(linha_bruta):
     }
 
 def enviar_lote_completo_google(url, pacote_json):
-    """ Envia TODAS as músicas em uma única requisição HTTP POST ultrarrápida """
     try:
         r = requests.post(url, json=pacote_json, headers={"Content-Type": "application/json"}, timeout=30)
         if r.status_code == 200:
@@ -308,7 +310,7 @@ elif opcao == "📂 Ver Todo o Acervo":
         st.dataframe(df_exibir, use_container_width=True)
 
 # ==========================================
-# 💿 ABA: FORMATADOR DE ACERVO (BULK UPLOAD EM 2 SEGUNDOS)
+# 💿 ABA: FORMATADOR DE ACERVO
 # ==========================================
 elif opcao == "💿 Formatador de Acervo":
     st.title("💿 Formatador & Hospedagem de Novos Cadastros")
@@ -351,7 +353,6 @@ elif opcao == "💿 Formatador de Acervo":
                     url_webhook = WEBHOOK_TULIO if "Túlio" in destino_geral else WEBHOOK_JESSICA
                     total_g = len(df_editado_g)
                     
-                    # Monta o pacote com o lote inteiro de registros
                     pacote_lote = []
                     for _, r in df_editado_g.iterrows():
                         pacote_lote.append({
