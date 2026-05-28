@@ -26,7 +26,7 @@ URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1zkPm3F9W8QbOBhKvdV7
 # 📊 LINKS DE LEITURA DAS PLANILHAS CÓPIAS (DO APP)
 URL_SOM_DA_ILHA_APP_CSV = "https://docs.google.com/spreadsheets/d/1HPirfRjmjZjG23x9kc9Y1zB9zhZv6_iOmB9DIzsCgNo/export?format=csv"
 URL_TULIO_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/export?format=csv"
-URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1iVgHYv58Aknbf0Pa1V2gENWtWZVzkkghdT7vV4nKxTE/export?format=csv"
+URL_JESSICA_APP_CSV = "https://docs.google.com/spreadsheets/d/1MQ7OcghWNTZwaYVBTmZlMojYTXZMOe5vT1px5VALpS0/export?format=csv"
 
 # 🚀 WEBHOOKS DE ESCRITA
 WEBHOOK_SOM_DA_ILHA = "https://script.google.com/macros/s/AKfycbw1Rzkirio_e9qIqLziKCqFXCmYICaOTVHixIuRgV2WCLdo4pzN1OGQSFtpicrWxf_Z/exec"
@@ -82,7 +82,6 @@ Aviso automático do Painel de Controle Udesc FM."""
 # ==========================================
 def puxar_dados_do_google(url, nome_acervo):
     try:
-        # Força o separador por vírgula que é o padrão do export do Google Sheets
         df = pd.read_csv(url, sep=',', on_bad_lines='skip', encoding='utf-8')
         if not df.empty:
             df.dropna(how='all', inplace=True)
@@ -103,7 +102,7 @@ def puxar_dados_do_google(url, nome_acervo):
 
 def inicializar_acervos(forcar_recarga=False):
     if "banco_completo" not in st.session_state or forcar_recarga:
-        with st.spinner("Sincronizando acervos completos (Originais + Cópias)..."):
+        with st.spinner("Sincronizando acervos completos..."):
             df_som_pro = puxar_dados_do_google(URL_SOM_DA_ILHA_PRO, "Som da Ilha")
             df_tulio_pro = puxar_dados_do_google(URL_TULIO_PRO, "Túlio")
             df_jessica_pro = puxar_dados_do_google(URL_JESSICA_PRO, "Jéssica")
@@ -118,22 +117,18 @@ def inicializar_acervos(forcar_recarga=False):
             if dfs:
                 df_unificado = pd.concat(dfs, ignore_index=True)
                 
-                # Garante que a coluna Nome do Arquivo exista e esteja preenchida
                 if "Nome do Arquivo" not in df_unificado.columns:
                     df_unificado["Nome do Arquivo"] = ""
                 
-                # Preenche vazios de forma segura caso falte em algum registro antigo
                 mask_vazio = df_unificado["Nome do Arquivo"].astype(str).str.strip() == ""
                 if "Artista" in df_unificado.columns and "Música" in df_unificado.columns:
                     df_unificado.loc[mask_vazio, "Nome do Arquivo"] = df_unificado["Artista"].astype(str) + " - " + df_unificado["Música"].astype(str)
                 
-                # Remove duplicadas exatas de linha para não sumir com músicas parecidas
                 df_unificado.drop_duplicates(keep="first", inplace=True)
                 st.session_state["banco_completo"] = df_unificado
             else:
                 st.session_state["banco_completo"] = pd.DataFrame()
 
-# Inicializa o banco ao abrir o app
 inicializar_acervos()
 
 def converter_link_google(url):
@@ -164,13 +159,12 @@ def carregar_banco_instagram(url):
 
 def processar_linha_acervo_original(linha_bruta):
     linha_original = linha_bruta.strip().replace('"', '')
-    if not linha_original:
+    if not línea_original:
         return None
         
     linha_limpa_fim = linha_original.lower()
     if linha_limpa_fim.endswith(".mp3"):
         linha_original = linha_original[:-4].strip()
-        linha_limpa_fim = linha_limpa_fim[:-4].strip()
         
     eh_sc = False
     if linha_limpa_fim.endswith("- sc") or linha_limpa_fim.endswith("-sc"):
@@ -265,8 +259,10 @@ if opcao == "🔍 Buscar no Acervo":
     termo = st.text_input("", label_visibility="collapsed")
     
     if termo and not df_total.empty:
-        termo_lower = termo.lower()
+        termo_lower = termo.lower().strip()
         mascara = pd.Series(False, index=df_total.index)
+        
+        # Sistema Avançado de busca case-insensitive à prova de falhas
         for col in df_total.columns:
             if col != "Acervo Origem":
                 mascara |= df_total[col].astype(str).str.lower().str.contains(termo_lower, na=False)
@@ -311,10 +307,9 @@ elif opcao == "💿 Formatador de Acervo":
             lista_geral = []
             lista_sc = []
             
-            for linha in linhas:
-                res = processar_linha_acervo_original(linha)
+            for line in linhas:
+                res = processar_linha_acervo_original(line)
                 if res:
-                    # Remove o campo auxiliar antes de jogar na tabela/enviar pro webhook
                     eh_sc = res.pop("eh_sc", False)
                     if eh_sc:
                         lista_sc.append(res)
@@ -325,7 +320,6 @@ elif opcao == "💿 Formatador de Acervo":
             if lista_sc: st.session_state["lote_sc_atual"] = pd.DataFrame(lista_sc)
             st.balloons()
 
-    # Fluxo Lote Geral
     if "lote_geral_atual" in st.session_state and not st.session_state["lote_geral_atual"].empty:
         st.success("🎉 Lote GERAL formatado com sucesso:")
         df_editado_g = st.data_editor(st.session_state["lote_geral_atual"], use_container_width=True, key="edit_g_real")
@@ -361,14 +355,13 @@ elif opcao == "💿 Formatador de Acervo":
                     
                     if com_sucesso:
                         enviar_notificacao_email(destino_geral, df_editado_g, u_nome_g)
-                        st.success("🔥 Lote enviado com sucesso absoluto e integrado em tempo real!")
+                        st.success("🔥 Lote enviado com sucesso absoluto!")
                         st.session_state["lote_geral_atual"] = pd.DataFrame()
                         inicializar_acervos(forcar_recarga=True)
                         st.rerun()
                     else:
                         st.error("Ocorreu uma lentidão ao sincronizar com o Google. Verifique a planilha.")
 
-    # Fluxo Lote SC (Som da Ilha)
     if "lote_sc_atual" in st.session_state and not st.session_state["lote_sc_atual"].empty:
         st.warning("🏝️ Lote SOM DA ILHA (Catarinenses) formatado:")
         df_editado_s = st.data_editor(st.session_state["lote_sc_atual"], use_container_width=True, key="edit_s_real")
@@ -401,7 +394,7 @@ elif opcao == "💿 Formatador de Acervo":
                                 
                     if com_sucesso_s:
                         enviar_notificacao_email("Som da Ilha (Ponte)", df_editado_s, u_nome_s)
-                        st.success("🔥 Lote Som da Ilha gravado com sucesso e sincronizado na tela!")
+                        st.success("🔥 Lote Som da Ilha gravado com sucesso!")
                         st.session_state["lote_sc_atual"] = pd.DataFrame()
                         inicializar_acervos(forcar_recarga=True)
                         st.rerun()
@@ -425,14 +418,14 @@ elif opcao == "📸 Gerador de Setlist (Instagram)":
             if texto_bruto_sysrad:
                 linhas = texto_bruto_sysrad.split('\n')
                 resultado = [datetime.now().strftime("%d/%m/%Y"), ""] 
-                for linha in linhas:
-                    linha = linha.strip()
-                    if not linha or "Marcador" in linha or "Total:" in linha or "DescriçãoDuração" in linha:
+                for line in linhas:
+                    line = line.strip()
+                    if not line or "Marcador" in line or "Total:" in line or "DescriçãoDuração" in line:
                         continue
-                    linha = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
-                    linha = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', linha, flags=re.IGNORECASE)
-                    if " - " in linha:
-                        partes = linha.split(" - ", 1)
+                    line = re.sub(r'\s*-\s*\(?part\.?[^)]+\)?\s*', ' ', line, flags=re.IGNORECASE)
+                    line = re.sub(r'\s*\(?part\.?[^)]+\)?\s*', ' ', line, flags=re.IGNORECASE)
+                    if " - " in line:
+                        partes = line.split(" - ", 1)
                         artista_original = partes[0].strip()
                         artista_busca = artista_original.lower()
                         resto = partes[1]
