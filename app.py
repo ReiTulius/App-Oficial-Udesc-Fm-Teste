@@ -108,9 +108,10 @@ def injetar_css_premium():
 
 injetar_css_premium()
 
-EMAIL_ROBO_REMETENTE = "heytuliusradio@gmail.com"
-SENHA_ROBO_REMETENTE = "nvfxdrlzpkzbugao"
-EMAIL_DESTINATARIO_OFICIAL = "heytuliusmusic@gmail.com"
+# 🔒 Lendo credenciais de forma segura através do gerenciador do Streamlit
+EMAIL_ROBO_REMETENTE = st.secrets["EMAIL_ROBO_REMETENTE"]
+SENHA_ROBO_REMETENTE = st.secrets["SENHA_ROBO_REMETENTE"]
+EMAIL_DESTINATARIO_OFICIAL = st.secrets["EMAIL_DESTINATARIO_OFICIAL"]
 
 # 📊 LINKS DE LEITURA (PLANILHAS ORIGINAIS PRO) - RESTAURADOS
 URL_SOM_DA_ILHA_PRO = "https://docs.google.com/spreadsheets/d/1zw7RPhpuInL7JqSylB_zOMu5zaqO4KgnJ7sD2eoM6gs/export?format=csv"
